@@ -1,192 +1,91 @@
-# Library Management System — Frontend
+# React + FastAPI Project
 
-The frontend of the Library Management System is built with **React, TypeScript, and Vite**. It provides the user interface for members, librarians, and administrators to interact with the library system.
+## Requirements
 
-## Tech Stack
+- [Python 3.13](https://www.python.org/downloads/) (recommended)
+- [Node.js 18+](https://nodejs.org/)
+- [Git](https://git-scm.com/downloads)
 
-- **React** — Component-based user interface
-- **TypeScript** — Static typing and maintainable code
-- **Vite** — Development server and build tool
-- **React Router** — Client-side navigation (planned)
-- **Fetch API** — Communication with the FastAPI backend
-- **CSS** — Styling and responsive layouts
-
-## Project Structure
-
-```text
-frontend/
-├── public/                     # Static public assets
-├── src/
-│   ├── assets/                 # Images, icons, and other assets
-│   │
-│   ├── components/             # Reusable UI components
-│   │   ├── layout/              # Navbar, sidebar, footer
-│   │   ├── books/               # Book cards and search components
-│   │   └── common/              # Buttons, loaders, shared UI
-│   │
-│   ├── pages/                  # Route-level pages
-│   │   ├── public/               # Home, login, public book catalogue
-│   │   ├── member/               # Member dashboard and personal loans
-│   │   ├── librarian/            # Book and borrowing management
-│   │   └── admin/                # User management and reports
-│   │
-│   ├── services/               # Backend API communication
-│   │   ├── api.ts                # Shared API configuration
-│   │   ├── bookService.ts        # Book-related API requests
-│   │   ├── loanService.ts        # Loan-related API requests
-│   │   └── userService.ts        # User-related API requests
-│   │
-│   ├── types/                  # Shared TypeScript types
-│   │   ├── book.ts
-│   │   └── user.ts
-│   │
-│   ├── routes/                 # Routing and route protection
-│   │   ├── AppRoutes.tsx
-│   │   └── ProtectedRoute.tsx
-│   │
-│   ├── App.tsx                 # Root application component
-│   ├── main.tsx                # Application entry point
-│   └── index.css               # Global styles
-│
-├── index.html
-├── package.json
-├── package-lock.json
-├── tsconfig.json
-└── vite.config.ts
-```
-
-**Note:** This structure describes the intended organization. Some folders and files may be added as the corresponding features are implemented.
-
-## Application Roles
-
-The application supports three top-level roles.
-
-### 1. Member
-
-Members can browse the book catalogue, search for books, submit borrowing requests, view their loans and borrowing history, and manage their own profiles.
-
-Students and teachers are member subtypes rather than separate authorization roles. Their borrowing limits may differ according to library policy.
-
-### 2. Librarian
-
-Librarians manage books and physical copies, maintain availability information, process borrowing requests, issue and return books, and manage borrowing records.
-
-### 3. Admin
-
-Administrators manage user accounts and roles, configure system settings, and access reports and system activity information.
-
-## Folder Responsibilities
-
-| Folder | Responsibility |
-|---|---|
-| `components/` | Reusable interface elements shared across pages |
-| `pages/` | Complete pages associated with application routes |
-| `services/` | HTTP requests to the FastAPI backend |
-| `types/` | TypeScript interfaces and type definitions |
-| `routes/` | Route configuration and frontend access controls |
-| `assets/` | Images, icons, and other imported resources |
-
-## Backend Integration
-
-The frontend communicates with the FastAPI backend through HTTP requests.
-
-During local development, the backend is expected to run at:
-
-```text
-http://127.0.0.1:8000
-```
-
-The FastAPI interactive API documentation is available at:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Backend requests should be organized in the `services/` directory rather than duplicated throughout individual pages.
-
-Example API health-check request:
-
-```typescript
-const response = await fetch(
-  "http://127.0.0.1:8000/api/health"
-);
-
-if (!response.ok) {
-  throw new Error("Backend request failed");
-}
-
-const data = await response.json();
-console.log(data);
-```
-
-For deployment, configure the API base URL appropriately for the target environment.
-
-## Role-Based Access Control
-
-The frontend may use the authenticated user's role to display appropriate navigation items and restrict access to certain pages.
-
-However, frontend restrictions are not a substitute for backend security. **FastAPI must independently authenticate users and enforce authorization rules** for protected endpoints and operations.
-
-## Development Setup
-
-### Prerequisites
-
-- Node.js and npm
-- Git
-- The project repository
-
-### Installation
-
-From the repository root:
+## 1. Download the project
 
 ```bash
-cd frontend
-npm install
+git clone <my-repo-url>
+```
+```bash
+cd my-project
 ```
 
-### Start the development server
+## 2. Run the backend
 
+Open a terminal:
+
+```bash
+cd backend
+```
+
+Create a virtual environment:
+
+```bash
+python -m venv .venv
+```
+
+Activate it:
+
+| System | Command |
+|---|---|
+| Windows (PowerShell) | `.\.venv\Scripts\Activate.ps1` |
+| Windows (CMD) | `.venv\Scripts\activate.bat` |
+| macOS / Linux | `source .venv/bin/activate` |
+
+If PowerShell blocks script activation, run this command in the current terminal, then activate again:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+```
+
+Install the backend dependencies:
+
+```bash
+python -m pip install --upgrade pip
+```
+```bash
+python -m pip install fastapi uvicorn
+```
+
+Start the backend:
+
+```bash
+python -m uvicorn main:app --reload
+```
+
+Backend: <http://127.0.0.1:8000>
+
+API documentation: <http://127.0.0.1:8000/docs>
+
+## 3. Run the frontend
+
+Open a **second terminal**:
+
+```bash
+cd my-project/frontend
+```
+```bash
+npm install
+```
 ```bash
 npm run dev
 ```
 
-Vite typically serves the application at:
+Frontend: <http://localhost:5173>
 
-```text
-http://localhost:5173
-```
+## Troubleshooting
 
-### Build for production
+| Problem | Solution |
+|---|---|
+| `uvicorn` not found | Activate `.venv` and run `python -m uvicorn main:app --reload`. |
+| Port 8000 is already in use | Start the backend with `python -m uvicorn main:app --reload --port 8001` and update the frontend API URL accordingly. |
+| Could not reach the backend | Make sure the backend is running and the frontend is using the correct API URL. |
+| PowerShell says scripts are disabled | Use the process-scoped execution policy command above, if permitted by your system administrator. |
+| Windows Application Control blocks a `.pyd` file during installation | Check Windows Security's protection history or your organization's security logs to identify the blocked file and policy. Use a compatible Python version and package combination. Do not disable security controls or bypass the policy. If the device is managed, contact the administrator. |
+| PyYAML fails to build during installation | Check the Python version and package compatibility. Try a supported Python version with compatible prebuilt wheels rather than forcing a source build. |
 
-```bash
-npm run build
-```
-
-### Run code quality checks
-
-If configured in `package.json`, run:
-
-```bash
-npm run lint
-```
-
-## Development Guidelines
-
-- Use TypeScript for React components and shared data types.
-- Keep pages separate from reusable UI components.
-- Put backend communication in `services/`.
-- Reuse shared components instead of duplicating interface code.
-- Keep role-specific pages organized by responsibility.
-- Do not store secrets or private credentials in frontend code.
-- Enforce authentication and permissions on the backend.
-- Test changes locally before committing and opening a pull request.
-
-## Project Status
-
-The frontend structure is designed to support incremental development of the public homepage, book catalogue, member dashboard, librarian tools, and administration features.
-
-Features should be documented as implemented only after their functionality has been developed and tested.
-
----
-
-Part of the Library Management System project developed for CSE309.
