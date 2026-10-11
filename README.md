@@ -1,4 +1,4 @@
-# React + FastAPI
+# React + FastAPI Project
 
 ## Requirements
 
