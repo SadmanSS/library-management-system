@@ -59,7 +59,6 @@ Manual or disconnected records make it difficult to know which copies are availa
 | Member | Search the catalogue, request books, and view own loans and due dates | MVP catalogue visibility; Beta self-service |
 | Librarian | Manage catalogue and copies, issue/return books, and handle requests | MVP core circulation; Beta authenticated operations |
 | Admin | Manage accounts, roles, borrowing rules, and reports | Beta |
-| Maintainer | Check API health, review API documentation, and deploy reliably | MVP foundations; Beta production hardening |
 
 The system has three top-level roles: **Member, Librarian, and Admin**. Student and Teacher are Member subtypes, not separate roles. Borrowing limits may vary by subtype through configuration.
 
