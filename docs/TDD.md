@@ -1,65 +1,84 @@
-# Technical Design Document (TDD)
-## Library Management System
+# Technical Design Document (TDD) — Library Management System
 
-**Document status:** Proposed technical baseline  
-**Version:** 1.0
+| Field | Value |
+|---|---|
+| Product | Library Management System |
+| Version | MVP + Beta + Future Phase |
+| Status | Proposed technical baseline |
+| Related documents | `PRD.md`, `SRS.md` |
 
-## 1. Purpose and Design Principles
+This document describes a straightforward implementation approach. Items marked **proposed** or **to confirm** are design choices, not claims that they have already been implemented.
 
-This document describes a proposed technical structure for the Library Management System. It separates confirmed project choices from decisions that must be finalized during implementation.
+## 1. Overview
 
-Design principles:
-- Keep frontend presentation separate from backend business rules.
-- Enforce permissions and ownership checks in the backend.
-- Treat borrowing requests, issue, and return as separate state transitions.
-- Preserve inventory and loan consistency using transactions and constraints.
-- Keep optional fine records separate from circulation and never implement payment processing.
-- Prefer small, testable modules over a monolithic UI or API handler.
+- **MVP:** Build the catalogue, copy inventory, member records, issue/return workflows, and overdue list with React/TypeScript and FastAPI.
+- **Beta:** Add accounts, Member/Librarian/Admin permissions, borrow requests, dashboards, secure deployment, and persistent production storage.
+- **Future Phase:** Add optional fine records and hosted payment-provider integration only after payment policy and security requirements are approved.
 
-## 2. Technology Stack
+## 2. Technology stack
 
-### Selected
-- **Frontend:** React with TypeScript.
-- **Build tooling:** Vite (based on the current frontend setup).
-- **Backend:** Python with FastAPI.
-- **Interface:** REST-style JSON APIs.
+| Layer | Choice | Purpose | Release |
+|---|---|---|---|
+| Frontend | React + TypeScript + Vite | Pages, forms, catalogue and circulation interface | MVP |
+| Backend API | Python + FastAPI | REST endpoints, validation, OpenAPI docs | MVP |
+| Request/response models | Pydantic | Validate API input and output | MVP |
+| Data access | SQLAlchemy or SQLModel (choose one and use consistently) | Database models and queries | MVP |
+| Local database | SQLite is a simple local-development option | Development and demos | MVP |
+| Production database | Persistent PostgreSQL or another selected managed relational database | Reliable deployment storage | Beta |
+| Authentication | FastAPI dependencies and a documented session/token approach | Login and protected APIs | Beta |
+| Schema changes | Alembic if SQLAlchemy/SQLModel migrations are used | Versioned database migration | Beta |
+| Hosting | Existing Vercel setup or a compatible host that supports the selected FastAPI/database arrangement | Deployment | Beta |
+| Payment provider | Hosted checkout from a provider selected later | Secure payment collection for approved fines | Future Phase |
 
-### To finalize
-- Database engine and migration tool.
-- Authentication strategy and password hashing library.
-- API schema/versioning conventions.
-- Production hosting and deployment topology.
-- Logging, backup, and monitoring services.
+**Implementation rule:** Do not commit real secrets. Keep database URLs, auth secrets, and future payment-provider keys in environment variables or the deployment platform's secret store.
 
-Do not introduce a database or infrastructure dependency until it is selected and documented.
+## 3. Architecture
 
-## 3. High-Level Architecture
-
-```text
-Browser
-  |
-  v
-React + TypeScript UI
-  |  API client (HTTP/JSON)
-  v
-FastAPI routers
-  |
-  v
-Authentication + authorization dependencies
-  |
-  v
-Application/service layer
-  |
-  v
-Repository/data-access layer
-  |
-  v
-Database (technology to be selected)
+```mermaid
+flowchart TD
+    User[Member / Librarian / Admin] --> Browser[React + TypeScript]
+    Browser -->|HTTPS / JSON| API[FastAPI routers]
+    API --> Auth[Authentication and RBAC dependencies - Beta]
+    Auth --> Service[Library service layer]
+    Service --> Data[Repository / database access]
+    Data --> DB[(Relational database)]
+    API --> OpenAPI[OpenAPI docs / health endpoint]
 ```
 
-The frontend is responsible for rendering pages, collecting input, and presenting API results. The backend is authoritative for business rules, permission checks, state transitions, and data integrity.
+The frontend displays data and collects input. The backend validates input, checks permissions, applies business rules, and saves changes. Database constraints and transactions protect book-copy/loan consistency.
 
-## 4. Suggested Repository Structure
+### 3.1 Request flow — MVP
+
+```mermaid
+sequenceDiagram
+    actor Staff as Librarian
+    participant UI as React UI
+    participant API as FastAPI
+    participant DB as Database
+    Staff->>UI: Issue an available copy to a member
+    UI->>API: POST /api/loans
+    API->>API: Validate member, copy, dates
+    API->>DB: Check availability and create loan in one transaction
+    DB-->>API: Loan saved; copy status updated
+    API-->>UI: 201 Created + loan details
+    UI-->>Staff: Show confirmation and due date
+```
+
+### 3.2 Borrow request flow — Beta
+
+```mermaid
+flowchart TD
+    A[Member submits request] --> B[Request status: Pending]
+    B --> C[Librarian reviews request]
+    C --> D{Approve?}
+    D -- No --> E[Rejected; notify/display decision]
+    D -- Yes --> F{Eligible member and copy available?}
+    F -- No --> G[Keep pending or reject with reason]
+    F -- Yes --> H[Create loan and mark request Fulfilled]
+    H --> I[Copy status: On Loan]
+```
+
+## 4. Proposed repository structure
 
 ```text
 library-management-system/
@@ -68,33 +87,22 @@ library-management-system/
 │   ├── SRS.md
 │   └── TDD.md
 ├── frontend/
-│   ├── src/
-│   │   ├── assets/
-│   │   ├── components/
-│   │   │   ├── common/
-│   │   │   ├── layout/
-│   │   │   ├── books/
-│   │   │   └── circulation/
-│   │   ├── pages/
-│   │   │   ├── public/
-│   │   │   ├── member/
-│   │   │   ├── librarian/
-│   │   │   └── admin/
-│   │   ├── routes/
-│   │   ├── services/
-│   │   ├── types/
-│   │   ├── App.tsx
-│   │   └── main.tsx
-│   └── package.json
+│   └── src/
+│       ├── components/       # reusable UI elements
+│       ├── pages/            # catalogue, member, librarian, admin screens
+│       ├── services/         # API client and feature API functions
+│       ├── types/            # TypeScript request/response types
+│       ├── routes/           # navigation and Beta route guards
+│       ├── App.tsx
+│       └── main.tsx
 ├── backend/
 │   ├── app/
-│   │   ├── api/
-│   │   │   └── routes/
-│   │   ├── core/
-│   │   ├── models/
-│   │   ├── schemas/
-│   │   ├── services/
-│   │   ├── repositories/
+│   │   ├── api/              # FastAPI routers
+│   │   ├── schemas/          # Pydantic schemas
+│   │   ├── models/           # database models
+│   │   ├── services/         # circulation and permission rules
+│   │   ├── repositories/     # database queries
+│   │   ├── core/             # settings, auth, shared errors
 │   │   └── main.py
 │   ├── tests/
 │   └── requirements.txt
@@ -103,205 +111,204 @@ library-management-system/
 └── README.md
 ```
 
-This is a target structure, not a claim that all these files already exist. Adapt it incrementally to the repository rather than moving everything at once.
+This is a target structure. Implement it gradually and keep it consistent with the actual repository.
 
-## 5. Frontend Design
+## 5. Data model
 
-### 5.1 Main Views
-- Public/catalogue: book search, results, and book details.
-- Member: personal dashboard, current loans, due dates, history, and borrow requests.
-- Librarian: catalogue and copy management, request queue, issue/return desk, and overdue list.
-- Admin: account/role management, borrowing-policy settings, reports, and audit view.
+### 5.1 MVP tables
 
-### 5.2 Component and Service Boundaries
-- Shared UI components: buttons, inputs, tables, dialogs, status indicators, loading/error states.
-- Feature components: book cards, search filters, request actions, circulation forms.
-- API services: centralize HTTP calls and error handling.
-- Types: define API request and response types.
-- Routes: separate navigation from page implementation.
+| Entity | Important fields | Rules |
+|---|---|---|
+| `Book` | `id`, `title`, `author`, `isbn`, `publisher`, `category`, `description`, `is_archived` | `title` required; supplied ISBN/identifier should be unique |
+| `BookCopy` | `id`, `book_id`, `copy_code`, `status`, `condition` | `copy_code` unique; a copy may have only one active loan |
+| `Member` | `id`, `full_name`, `email/contact`, `member_type`, `is_active`, `created_at` | `member_type` is Student or Teacher; inactive members cannot receive new loans |
+| `Loan` | `id`, `member_id`, `copy_id`, `issued_at`, `due_at`, `returned_at`, `status` | active loan requires valid member/copy; return closes the loan |
 
-### 5.3 Frontend Security
-The UI may hide actions the current role cannot perform, but this is only a usability measure. Every protected operation must also be authorized by FastAPI.
+### 5.2 Beta additions
 
-## 6. Backend Design
+| Entity | Important fields | Rules |
+|---|---|---|
+| `UserAccount` | `id`, `email`, `password_hash`, `role`, `is_active`, `member_id?` | Role is Member/Librarian/Admin; hash only, never return password hash |
+| `BorrowRequest` | `id`, `member_id`, `book_id`, `requested_at`, `status`, `decision_by`, `decision_at` | Pending request can be decided once; only Librarian/Admin can approve or reject |
+| `BorrowingPolicy` | `id`, `member_type`, `max_active_loans`, `loan_days`, `renewal_limit?` | Values configured only after policy is agreed |
+| `AuditEvent` | `id`, `actor_user_id`, `action`, `resource_type`, `resource_id`, `created_at` | Avoid storing secrets or unnecessary personal data |
 
-### 6.1 Proposed Module Responsibilities
-- **API routers:** HTTP parsing, dependency injection, response status and schema.
-- **Schemas:** Pydantic request and response validation.
-- **Services:** business rules and workflow transitions.
-- **Repositories/data access:** persistence queries.
-- **Models:** database entities, once a database is selected.
-- **Core:** configuration, authentication helpers, permission definitions, and shared exceptions.
+### 5.3 Future Phase additions
 
-Keep route handlers thin. Avoid duplicating borrowing rules across multiple endpoints.
+| Entity | Important fields | Rules |
+|---|---|---|
+| `FineRecord` | `id`, `loan_id`, `amount`, `currency`, `reason`, `status`, `created_by`, `created_at` | Optional; requires an approved fine policy |
+| `PaymentTransaction` | `id`, `fine_id`, `provider`, `provider_reference`, `amount`, `currency`, `status`, timestamps | Store provider reference and status only; never raw card details |
 
-### 6.2 Proposed API Resource Groups
-Exact paths and schemas should be confirmed as the API is implemented. A reasonable initial design is:
+### 5.4 Relationships
 
-| Resource group | Typical operations |
+```mermaid
+erDiagram
+    BOOK ||--o{ BOOK_COPY : has
+    BOOK_COPY ||--o{ LOAN : appears_in
+    MEMBER ||--o{ LOAN : borrows
+    MEMBER ||--o{ BORROW_REQUEST : submits
+    BOOK ||--o{ BORROW_REQUEST : requested_for
+    USER_ACCOUNT o|--o| MEMBER : links_to
+    LOAN ||--o| FINE_RECORD : may_have
+    FINE_RECORD ||--o{ PAYMENT_TRANSACTION : may_be_paid_by
+```
+
+The diagram includes Beta and Future Phase entities as planned. The actual MVP can begin with `Book`, `BookCopy`, `Member`, and `Loan`.
+
+## 6. REST API design
+
+Base path proposal: `/api`. All request and response bodies use JSON. FastAPI should publish the actual implemented schema through its OpenAPI documentation.
+
+### 6.1 Core endpoints — MVP
+
+| Method | Path | Purpose | Success |
+|---|---|---|---|
+| `GET` | `/api/health` | Check service health | `200` |
+| `GET` | `/api/books` | List/search books | `200` |
+| `POST` | `/api/books` | Create a book | `201` |
+| `GET` | `/api/books/{book_id}` | View a book | `200` |
+| `PATCH` | `/api/books/{book_id}` | Update/archive a book | `200` |
+| `GET` | `/api/copies` | List copies and availability | `200` |
+| `POST` | `/api/copies` | Add a physical copy | `201` |
+| `PATCH` | `/api/copies/{copy_id}` | Update copy status/condition | `200` |
+| `GET` | `/api/members` | List member records | `200` |
+| `POST` | `/api/members` | Register a member record | `201` |
+| `GET` | `/api/members/{member_id}` | View member record | `200` |
+| `PATCH` | `/api/members/{member_id}` | Update or deactivate member | `200` |
+| `GET` | `/api/loans` | List loans; support status/overdue filters | `200` |
+| `POST` | `/api/loans` | Issue a copy by creating a loan | `201` |
+| `POST` | `/api/loans/{loan_id}/return` | Record a return | `200` |
+
+For a simple first cut, pagination and search may be basic. Book or member records referenced by loans should be archived/deactivated instead of hard-deleted.
+
+### 6.2 Beta endpoints
+
+| Method | Path | Who | Purpose |
+|---|---|---|---|
+| `POST` | `/api/auth/login` | Guest | Sign in |
+| `POST` | `/api/auth/logout` | Authenticated user | Sign out |
+| `GET` | `/api/users/me` | Authenticated user | View own profile |
+| `PATCH` | `/api/users/me` | Authenticated user | Update permitted profile fields |
+| `GET` | `/api/me/loans` | Member | View own loans/history |
+| `POST` | `/api/borrow-requests` | Member | Submit a request |
+| `GET` | `/api/borrow-requests` | Member/Librarian/Admin, scoped by role | View eligible requests |
+| `POST` | `/api/borrow-requests/{id}/approve` | Librarian/Admin | Approve and proceed to issue workflow |
+| `POST` | `/api/borrow-requests/{id}/reject` | Librarian/Admin | Reject a pending request |
+| `GET` | `/api/admin/users` | Admin | List accounts |
+| `PATCH` | `/api/admin/users/{id}` | Admin | Change permitted account status/role |
+| `PATCH` | `/api/admin/borrowing-policy/{member_type}` | Admin | Change approved limits and loan duration |
+| `GET` | `/api/reports/summary` | Librarian/Admin | View circulation summary |
+
+Exact request and response schemas should be defined alongside each endpoint during implementation; the table is the proposed API surface, not a claim that endpoints already exist.
+
+### 6.3 Future Phase endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/me/fines` | View own fine records |
+| `POST` | `/api/fines/{fine_id}/checkout` | Create a provider checkout session for an eligible fine |
+| `POST` | `/api/payments/provider-webhook` | Receive and verify provider events server-side |
+| `GET` | `/api/me/payments` | View own payment history |
+
+Webhook signature validation, idempotency keys, amount/currency verification, and provider-side status verification are required before a payment integration goes live.
+
+## 7. State and data integrity rules
+
+1. An individual copy can have at most one active loan.
+2. Only a copy with status Available may be issued.
+3. Only an active member may receive a loan.
+4. Due date must not precede issue date.
+5. Returning a loan twice must be rejected without changing existing records.
+6. A loan return and copy-status update must be saved atomically in a transaction.
+7. Book/member records with loan history should be archived/deactivated, not physically deleted.
+8. In Beta, each protected endpoint checks the caller's role and ownership on the backend.
+9. A borrow request is not an issued loan. The loan is created only when the librarian completes the issue workflow.
+10. In the Future Phase, a payment is successful only after verified provider confirmation; repeated callbacks must be safe to process more than once.
+
+## 8. Authentication and authorization — Beta
+
+### 8.1 Role design
+
+Top-level roles are exactly `member`, `librarian`, and `admin`. Student/Teacher is a member subtype stored on the Member profile, not a separate role.
+
+### 8.2 Enforcement approach
+
+- Create reusable FastAPI dependencies for authenticated user, Librarian, and Admin.
+- Check resource ownership for Member profile, loans, requests, fines, and payment history.
+- Keep role assignment restricted to Admin and validate requested roles against the allowed list.
+- Treat React route guards as user experience only; the API remains authoritative.
+- Audit role changes and staff decisions where appropriate.
+
+## 9. Security and configuration
+
+| Area | Design |
 |---|---|
-| `/api/auth` | Login/logout or token/session operations, depending on chosen auth |
-| `/api/books` | Search/list, details, and librarian catalogue CRUD |
-| `/api/copies` | Inventory and copy status management |
-| `/api/members` | Authorized member records and profile operations |
-| `/api/borrow-requests` | Create, list by permission, approve, reject, cancel |
-| `/api/loans` | Issue, list permitted loans, return, and history |
-| `/api/reports` | Authorized operational reports |
-| `/api/admin` | User, role, and policy administration |
+| Credentials | Store salted password hashes using a standard maintained library; never store plain passwords |
+| Secrets | Database/auth/payment secrets live in environment variables or secret manager; never commit to Git |
+| Transport | Use HTTPS in deployed environments |
+| Permissions | Server-side checks on every protected endpoint |
+| Input | Validate requests with Pydantic; use parameterized ORM/database operations |
+| Errors | Return safe error messages; keep detailed diagnostic logs server-side |
+| Sessions | Select an appropriate session/token strategy and document expiry/revocation behavior before Beta release |
+| CORS | Restrict to actual frontend origins when frontend and API use different origins |
+| Payment | Future phase only; hosted checkout, signed webhooks, idempotent processing, no raw payment credentials |
 
-An endpoint should be implemented only when its behavior, permissions, request schema, and response schema are defined.
+## 10. Testing strategy
 
-## 7. Domain Model and Integrity
+| Test level | Examples | Release |
+|---|---|---|
+| Unit tests | Due-date/overdue logic, borrowing-limit checks, allowed state transitions | MVP/Beta |
+| API tests | Book CRUD, member CRUD, issue, return, invalid IDs, validation errors | MVP |
+| Integrity tests | Duplicate active issue is rejected; return updates loan and copy together | MVP |
+| Authorization tests | Member cannot manage catalogue; one Member cannot read another's loans; only Admin manages roles | Beta |
+| Workflow tests | Borrow request → decision → issue → return | Beta |
+| Payment integration tests | Verified callback, duplicate callback, failed/cancelled transaction, amount mismatch | Future Phase |
 
-### 7.1 Main Entities
-- **User:** login identity, status, role, and account metadata.
-- **MemberProfile:** Student/Teacher subtype and library-specific attributes.
-- **Book:** bibliographic record.
-- **BookCopy:** an individually tracked physical copy.
-- **BorrowRequest:** request status and review metadata.
-- **Loan:** issue, due, and return information.
-- **FineRecord (optional):** manually recorded fine/settlement details if the library requires them.
-- **AuditEvent:** security- and operations-relevant activity.
+## 11. Deployment and milestones
 
-### 7.2 Key Constraints
-- A Book may have multiple BookCopy records.
-- A BookCopy must not have more than one active Loan.
-- A Loan must reference a valid member and copy.
-- A returned loan must have a return timestamp.
-- A pending request can be decided only once.
-- Invalid status transitions must be rejected.
-- Deactivated accounts cannot initiate new borrowing actions.
-- FineRecord, if implemented, records information only; it does not initiate a payment.
+### MVP — Midterm
 
-Use database transactions and suitable uniqueness/foreign-key constraints to prevent race conditions when issuing copies.
+1. Confirm the core data model and local database connection.
+2. Implement book and copy endpoints.
+3. Implement member records and loan issue/return operations.
+4. Connect React forms and tables to FastAPI.
+5. Verify health/docs, validation, and core workflows locally.
 
-## 8. Circulation State Model
+### Beta — Final
 
-Suggested request states:
-- `pending`
-- `approved`
-- `rejected`
-- `cancelled`
-- `fulfilled` (after issue, if this distinction is useful)
+1. Add authentication and account-to-member linking.
+2. Add server-side RBAC and ownership checks.
+3. Implement borrow requests, librarian decision tools, and member history.
+4. Implement Admin account/policy management and basic reports.
+5. Configure persistent production database, HTTPS, secrets, health checks, and deployment process.
+6. Run acceptance and authorization tests before release.
 
-Suggested loan states:
-- `active`
-- `returned`
-- `lost` (only if loss handling is in scope)
+### Future Phase — Payments
 
-Overdue should generally be derived when a loan is active and the current date is later than its due date. It should not replace the underlying active loan status.
+1. Confirm fine policy, currency, provider, refunds, and support procedures.
+2. Design fine and payment records and migrations.
+3. Add hosted checkout and server-side provider verification.
+4. Test duplicate callbacks, failed payments, reconciliation, and receipt generation.
+5. Complete a security review before enabling the feature for real users.
 
-Suggested copy states:
-- `available`
-- `on_loan`
-- `unavailable`
-- `maintenance`
+## 12. Risks and mitigations
 
-If reservations are later implemented, add a reservation state and define its effect on availability explicitly.
+| Risk | Mitigation |
+|---|---|
+| Duplicate issue of a single copy | Use database constraints/transaction and check for an active loan |
+| Copy status and loan status become inconsistent | Update both within one transaction and test rollback behavior |
+| Member sees another member's records | Add ownership checks to every member-specific API endpoint and test them |
+| Book records are lost due to hard deletion | Archive books and deactivate members that have history |
+| Deployed app loses data on restart | Select a persistent database for Beta; do not rely on serverless local files |
+| Requirements grow beyond the release plan | Keep features assigned to MVP, Beta, or Future Phase and review changes before implementation |
+| Payment fraud or false confirmation | Future-phase provider verification, signed webhooks, idempotency, reconciliation, and no raw card storage |
 
-## 9. Borrow and Return Transactions
+## 13. Decisions to finalize
 
-### Issue
-1. Authenticate the staff user and authorize Librarian permission.
-2. Validate that the member is active and within borrowing limits.
-3. Validate that the copy is available and has no active loan.
-4. Within a transaction, create the loan, set issue and due dates, and update copy status.
-5. Commit the transaction and return the loan representation.
-6. If any step fails, roll back the entire transaction.
-
-### Return
-1. Authenticate and authorize the Librarian.
-2. Load the active loan and associated copy.
-3. Validate that the loan has not already been returned.
-4. Within a transaction, record return date and staff actor, close the loan, and set copy status to Available or Maintenance as appropriate.
-5. Commit and return the updated records.
-
-The service layer and database constraints should protect against simultaneous requests attempting to issue the same copy.
-
-## 10. Authorization Model
-
-Top-level roles:
-- `member`
-- `librarian`
-- `admin`
-
-Student and Teacher are Member subtypes, not separate roles. Borrowing limits may vary by subtype through configuration.
-
-Authorization must include:
-- Role permission checks.
-- Resource ownership checks for member-specific records.
-- Validation of state transitions.
-- Server-side enforcement for every protected endpoint.
-- Audit logging for sensitive operations such as role changes, issue, and return.
-
-Avoid relying on frontend route guards as the only security boundary.
-
-## 11. Fine Records Without Payments (Optional)
-
-Payment processing is explicitly out of scope. If the library requires fines:
-- A staff member may record the amount, reason, and related loan.
-- A staff member may update a manual status such as `unsettled`, `settled`, or `waived`, according to approved policy.
-- Record who made the change and when.
-- Do not store card/bank credentials or integrate payment providers.
-- Do not automatically mark a fine settled merely because a book was returned.
-
-If no fine policy is required, omit the FineRecord entity and related UI/API entirely.
-
-## 12. Security and Configuration
-
-- Store secrets in environment variables or the deployment platform's secret manager.
-- Provide `.env.example` with placeholder values only; never commit real secrets.
-- Configure CORS for known frontend origins rather than unrestricted production origins.
-- Use secure password hashing if password authentication is selected.
-- Validate all incoming data with Pydantic schemas.
-- Return consistent errors without exposing stack traces or secrets.
-- Apply rate limiting and additional controls as deployment requirements become clear.
-- Define retention and backup rules before production data is used.
-
-## 13. Testing Strategy
-
-### Unit Tests
-- Borrowing-limit validation.
-- Request and loan state transitions.
-- Due-date and overdue calculations.
-- Fine record behavior if enabled.
-
-### API Tests
-- Successful catalogue search.
-- Unauthorized and forbidden requests.
-- Request approval and rejection.
-- Issue and return workflows.
-- Prevention of duplicate active loans.
-- Member ownership enforcement.
-- Input validation and not-found cases.
-
-### Integration Tests
-- Transaction consistency between loans and copy status.
-- Concurrent attempts to issue the same copy.
-- Authentication and role-based permissions across the API.
-
-### Frontend Tests
-- Forms display validation and API errors.
-- Pages render loading, empty, success, and failure states.
-- Restricted actions are hidden appropriately, while backend authorization remains authoritative.
-
-## 14. Deployment and Operations
-
-Deployment platform and database are not yet specified. Before production release:
-- Configure separate development and production environments.
-- Set environment variables and CORS origins per environment.
-- Apply database migrations in a controlled process.
-- Configure HTTPS, backups, logs, and health checks.
-- Verify secrets are not committed.
-- Run automated tests before merging and deploying.
-- Document rollback and restore procedures.
-
-## 15. Decisions to Finalize
-
-1. Select the database and migration strategy.
-2. Select and document the authentication/session approach.
-3. Confirm Student and Teacher loan limits and durations.
-4. Decide whether reservations and renewals are needed.
-5. Decide whether fine records are needed; payment processing remains excluded.
-6. Define account creation and recovery.
-7. Choose deployment targets and operational requirements.
+- Choose SQLAlchemy or SQLModel and document the final schema/migration approach.
+- Select the production database and hosting arrangement compatible with the existing Vercel setup.
+- Agree on loan durations, maximum loans, renewals, and reservation rules.
+- Decide account creation and recovery process.
+- Confirm whether fine records are needed at all.
+- If payments are later approved, select a provider and define supported currencies, refunds, fee policy, and reconciliation ownership.
