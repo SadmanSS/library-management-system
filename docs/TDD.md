@@ -47,6 +47,7 @@ flowchart TD
 
 The frontend displays data and collects input. The backend validates input, checks permissions, applies business rules, and saves changes. Database constraints and transactions protect book-copy/loan consistency.
 
+
 ### 3.1 Request flow — MVP
 
 ```mermaid
@@ -55,14 +56,16 @@ sequenceDiagram
     participant UI as React UI
     participant API as FastAPI
     participant DB as Database
+
     Staff->>UI: Issue an available copy to a member
     UI->>API: POST /api/loans
-    API->>API: Validate member, copy, dates
-    API->>DB: Check availability and create loan in one transaction
-    DB-->>API: Loan saved; copy status updated
-    API-->>UI: 201 Created + loan details
+    API->>API: Validate member, copy, and dates
+    API->>DB: Check availability and create loan transaction
+    DB-->>API: Confirm loan saved and copy status updated
+    API-->>UI: Return 201 Created with loan details
     UI-->>Staff: Show confirmation and due date
 ```
+
 
 ### 3.2 Borrow request flow — Beta
 
