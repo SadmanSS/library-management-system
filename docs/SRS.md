@@ -1,172 +1,297 @@
-# Software Requirements Specification (SRS)
-## Library Management System
+# Software Requirements Specification (SRS) — Library Management System
 
-**Document status:** Initial requirements baseline  
-**Version:** 1.0
+| Field | Value |
+|---|---|
+| Product | Library Management System |
+| Version | MVP + Beta + Future Phase |
+| Status | Draft baseline |
+| Related documents | `PRD.md`, `TDD.md` |
 
-## 1. Purpose
+This document defines observable system behavior and how it will be checked. Requirements are grouped by release so the MVP remains small while the Beta adds secure multi-user workflows.
 
-This document specifies the expected behavior and quality requirements for the Library Management System. It is a baseline for implementation and testing; policy values that have not yet been confirmed are explicitly left configurable or unresolved.
+## 1. Introduction
 
-## 2. System Scope
+### 1.1 Purpose
 
-The system manages library catalogue records, physical copies, members, borrowing requests, loans, returns, due dates, overdue records, and basic reports. It does not process payments. Any fine or repayment settlement may be recorded manually by authorized staff if the library adopts such a policy.
+Specify the requirements for catalogue and circulation management first, then authenticated member service, roles, administrative tools, and a possible future payment feature.
 
-## 3. User Classes and Authorization
+### 1.2 Scope by release
 
-### 3.1 Member
-Student and Teacher are member subtypes. They share the Member authorization role, though configurable limits may differ by subtype.
+| Release | Scope |
+|---|---|
+| MVP | Books, copies, member records, issue/return, due dates, overdue list, REST API, and basic React interface. Development/demo use; authentication is not yet complete. |
+| Beta | Authentication, RBAC, private member data, borrow requests, staff workflows, admin controls, deployment, and security hardening. |
+| Future Phase | Optional fine records and online payments for approved charges. No payment processing in MVP or Beta. |
 
-Permitted actions:
-- Search and view catalogue records and availability.
-- Submit or cancel eligible requests.
-- View and update permitted profile fields.
-- View their own active loans, due dates, history, and any applicable recorded fine/settlement details.
+### 1.3 Definitions
 
-Prohibited actions:
-- Manage catalogue or inventory.
-- Approve requests, issue books, or record returns.
-- Access another member's private records.
-- Change roles or system configuration.
+| Term | Meaning |
+|---|---|
+| Book | A catalogue record describing a title/work. |
+| Book copy | One physical copy of a book that can be issued independently. |
+| Loan | A record that a copy has been issued to a member and has a due date. |
+| Borrow request | A Member's request to borrow a book; available in Beta. |
+| RBAC | Role-Based Access Control: permissions depend on the user's role. |
+| Member subtype | Student or Teacher classification within the Member role. |
+| Overdue loan | An active loan whose due date has passed. |
+| Fine record | An optional record of a charge imposed by library policy; Future Phase unless policy says otherwise. |
+| Payment transaction | Provider-confirmed money transaction for a charge; Future Phase only. |
 
-### 3.2 Librarian
-Permitted actions:
-- Manage catalogue entries and physical copies.
-- Review member information required for library operations.
-- Approve or reject requests.
-- Issue books and record returns.
-- Review active, returned, and overdue loans.
-- Record applicable fine/settlement information manually if enabled.
+## 2. Overall description
 
-### 3.3 Admin
-Permitted actions:
-- Manage accounts and assign roles.
-- Configure borrowing rules and member-subtype limits.
-- View system-level reports and audit records.
-- Manage system settings.
+### 2.1 System context
 
-Administrative privilege should not automatically bypass the need for auditable changes to circulation records.
+```mermaid
+flowchart LR
+    Browser[User browser] --> UI[React + TypeScript frontend]
+    UI --> API[FastAPI REST API]
+    API --> Service[Validation and library rules]
+    Service --> DB[(Relational database)]
+    API --> Docs[OpenAPI / interactive API docs]
+```
 
-## 4. Functional Requirements
+The browser communicates with the backend API. The backend is responsible for validation, circulation rules, authentication, authorization, and database changes. The frontend must not be treated as the security boundary.
 
-### FR-01: Authentication
-The system shall authenticate users before granting access to protected resources. Authentication mechanism, session/token lifetime, and recovery policy must be finalized in the technical design.
+### 2.2 User classes and roles
 
-### FR-02: Authorization
-The backend shall enforce permissions for every protected operation. Hiding a button in the frontend alone is not sufficient authorization.
+| Role | Release | Main permissions |
+|---|---|---|
+| Unauthenticated development operator | MVP | Can use local demo screens/API; not suitable for public production access |
+| Member | Beta | Browse books, submit/cancel eligible requests, view own profile and loan history |
+| Librarian | Beta | Manage catalogue and copies, review requests, issue/return books, view overdue records |
+| Admin | Beta | Manage accounts and roles, configure borrowing rules, view operational reports |
 
-### FR-03: Catalogue Search
-The system shall allow users to search and browse catalogue records using supported fields such as title, author, category, and identifier.
+Student and Teacher are Member subtypes. They may have different limits when configured, but they do not get separate top-level roles.
 
-### FR-04: Book Details
-The system shall display relevant catalogue information and availability without exposing internal or private data.
+### 2.3 Constraints and assumptions
 
-### FR-05: Inventory
-The system shall track individual physical copies or equivalent inventory units and their statuses, such as Available, On Loan, Reserved (if reservations are enabled), and Unavailable.
+- Backend routes use a consistent `/api` prefix and JSON request/response bodies.
+- The database technology is finalized in the TDD; the production database must support persistent records and relational constraints.
+- MVP is a local/demo baseline and does not have complete account authorization.
+- The Beta must enforce permissions in the API on every protected request.
+- Payment-provider behavior and fine rules are not requirements for MVP or Beta.
 
-### FR-06: Borrow Request
-A Member shall be able to submit a request for an eligible book when policy conditions permit. The system shall validate the member's status, borrowing limits, and availability rules.
+## 3. Functional requirements
 
-### FR-07: Request Review
-A Librarian shall be able to approve or reject a pending request and record the decision. The system shall prevent invalid state transitions and duplicate processing.
+### 3.1 Catalogue and copies — MVP
 
-### FR-08: Issue Loan
-A Librarian shall be able to issue an available physical copy to an eligible Member. The system shall record the member, copy, issue date, due date, issuing staff member, and loan status.
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-01 | The system shall create a book record with required title and optional author, ISBN/identifier, publisher, category, and description. | Must |
+| FR-02 | The system shall list and view book records and allow search by title, author, or identifier when search is implemented. | Must |
+| FR-03 | The system shall update catalogue metadata and archive a record without destroying historical loan references. | Must |
+| FR-04 | The system shall create and view individual copies with unique copy codes. | Must |
+| FR-05 | The system shall track copy status, including Available, On Loan, and Unavailable/Maintenance. | Must |
+| FR-06 | The system shall prevent an unavailable or already loaned copy from being issued. | Must |
 
-### FR-09: Return Loan
-A Librarian shall be able to record receipt of a borrowed copy. The system shall record the return date, close the active loan, and update copy availability. A copy requiring maintenance shall not be marked Available.
+### 3.2 Members and circulation — MVP
 
-### FR-10: Due-Date and Overdue Tracking
-The system shall identify loans that remain active after their due date. Overdue status shall be derived from the due date and loan status or maintained consistently by a scheduled process.
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-07 | The system shall create, view, update, and deactivate a Member record with member subtype Student or Teacher. | Must |
+| FR-08 | The system shall issue an available copy to an active member and store issue date, due date, copy, member, and loan status. | Must |
+| FR-09 | The system shall record a return, store the return date, close the loan, and update copy status. | Must |
+| FR-10 | The system shall list active, returned, and overdue loans. | Must |
+| FR-11 | An active loan shall be considered overdue when its due date has passed and it has not been returned. | Must |
+| FR-12 | The API shall validate input and use consistent status codes and error messages for invalid or missing data. | Must |
+| FR-13 | The API shall expose a health endpoint and interactive API documentation. | Should |
 
-### FR-11: Member History
-A Member shall be able to view their own active loans and borrowing history. A Member shall not be able to retrieve another Member's private records by changing an ID in a request.
+### 3.3 Authentication and profile — Beta
 
-### FR-12: Fine or Settlement Record (Optional)
-If the library adopts a fine policy, authorized staff shall be able to record a fine amount and a manual settlement status. The system shall not process or initiate payments. The fine calculation and settlement rules must be defined before this requirement is enabled.
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-14 | The system shall authenticate a registered account before granting access to protected functions. | Must |
+| FR-15 | The system shall support logout and invalidate or expire the session according to the selected authentication design. | Must |
+| FR-16 | The system shall associate a Member account with the correct Member profile. | Must |
+| FR-17 | A Member shall be able to view their own profile, current loans, due dates, and borrowing history. | Must |
+| FR-18 | The system shall prevent a Member from reading or modifying another Member's private records. | Must |
 
-### FR-13: Account and Role Management
-An Admin shall be able to create, update, deactivate, and assign roles to accounts. Role changes shall be restricted to authorized administrators and should be auditable.
+### 3.4 Role-based access and requests — Beta
 
-### FR-14: Configuration
-An Admin shall be able to manage approved library rules, including loan duration and member-subtype limits, where these settings are implemented.
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-19 | The system shall implement exactly three top-level roles: Member, Librarian, and Admin. | Must |
+| FR-20 | The backend shall authorize each protected endpoint based on role, ownership, and workflow state. | Must |
+| FR-21 | A Member shall be able to submit and cancel an eligible pending borrow request. | Must |
+| FR-22 | A Librarian shall be able to approve or reject a pending request and record the decision. | Must |
+| FR-23 | A Librarian shall be able to issue and return books and manage copy status. | Must |
+| FR-24 | An Admin shall be able to create/deactivate accounts and assign permitted roles. | Must |
+| FR-25 | An Admin shall be able to configure borrowing limits and loan duration after the policy values are confirmed. | Should |
+| FR-26 | Authorized staff shall be able to view basic inventory, active loan, return, and overdue summaries. | Should |
+| FR-27 | The system shall record the actor and timestamp for important actions such as issue, return, role change, and request decision. | Should |
 
-### FR-15: Reporting
-Authorized staff shall be able to view basic reports, including catalogue inventory, active loans, returns, overdue loans, and borrowing activity.
+### 3.5 Future Phase — fine and payment records
 
-### FR-16: Validation and Error Handling
-The system shall validate request payloads and return consistent errors for invalid data, missing resources, authentication failures, authorization failures, and conflicting circulation actions.
+| ID | Requirement | Priority |
+|---|---|---|
+| FR-28 | If an approved fine policy is adopted, the system may record the fine amount, reason, related loan, and manual adjustment history. | Future |
+| FR-29 | If online payments are enabled, the system shall redirect the Member to a trusted hosted payment provider for an approved outstanding charge. | Future |
+| FR-30 | The system shall mark a transaction as successful only after verifying a trusted provider callback or server-side status check. | Future |
+| FR-31 | The system shall record transaction reference, amount, currency, status, and timestamps and provide a confirmation/receipt. | Future |
+| FR-32 | The system shall not store raw card numbers, card security codes, banking passwords, or provider secrets in the frontend or source repository. | Future |
+| FR-33 | Duplicate or repeated provider callbacks shall not create duplicate successful payment records. | Future |
 
-### FR-17: Auditability
-The system should record important actions such as role changes, issue, return, and request decisions with actor and timestamp information, subject to the finalized retention policy.
+### 3.6 Validation rules
 
-## 5. Core Business Rules
+| Field | Rule | Release |
+|---|---|---|
+| Book title | Required; trimmed; 1–200 characters | MVP |
+| Book identifier | Unique when supplied | MVP |
+| Copy code | Required and unique | MVP |
+| Member name | Required; trimmed; 1–100 characters | MVP |
+| Member subtype | `student` or `teacher` | MVP |
+| Due date | Valid date; cannot precede issue date | MVP |
+| Return | Only an active loan may be returned | MVP |
+| Account email | Valid, normalized, and unique | Beta |
+| Password | Must meet the policy defined by the authentication design | Beta |
+| Role | `member`, `librarian`, or `admin` only | Beta |
+| Payment amount | Positive decimal using a defined currency and precision | Future |
 
-- A copy may have at most one active loan.
-- Only a Librarian may issue or return a copy.
-- Only an authorized Member may create a request for their own account.
-- A Member may see only their own private profile and loan records.
-- A request, approval, issue, and return are distinct workflow states.
-- The system must reject invalid transitions, such as returning a loan that is already closed.
-- Due dates and borrowing limits are based on configured policy, not hard-coded assumptions.
-- Payment processing is not part of the system. Optional fine settlement is recorded manually.
+## 4. Permission matrix — Beta
 
-## 6. Data Requirements
+| Action | Member | Librarian | Admin |
+|---|---:|---:|---:|
+| Browse catalogue and availability | Yes | Yes | Yes |
+| View own profile and loans | Yes | N/A | N/A |
+| View another member's private profile/history | No | Only when needed for library operations | Administrative need only; audited |
+| Submit/cancel own eligible request | Yes | No | No by default |
+| Create/update/archive book catalogue | No | Yes | Yes |
+| Manage physical copies | No | Yes | Yes |
+| Approve/reject borrow requests | No | Yes | Yes, if policy permits |
+| Issue and return copies | No | Yes | Yes, if policy permits |
+| View operational overdue/inventory reports | Own overdue records only | Yes | Yes |
+| Create/deactivate accounts and assign roles | No | No | Yes |
+| Change borrowing policy | No | No | Yes |
+| Record or settle future fine records | No by default | If authorized by policy | Yes |
+| View payment provider details or secrets | No | No | No; secrets remain in server configuration |
 
-The conceptual data model should include:
-- **User:** identity, contact/login fields, account status, and role.
-- **MemberProfile:** member subtype (Student or Teacher) and permitted library-specific attributes.
-- **Book:** catalogue metadata such as title, author, ISBN/identifier, publisher, and category.
-- **BookCopy:** individual copy identifier, condition, and availability status.
-- **BorrowRequest:** member, requested book or copy, request timestamp, status, and decision metadata.
-- **Loan:** member, copy, issue date, due date, return date, status, and staff references.
-- **FineRecord (optional):** loan, amount, reason, manual settlement status, and staff/timestamp metadata.
-- **AuditEvent:** actor, action, affected resource, timestamp, and appropriate non-sensitive context.
+All permissions must be enforced by the backend. Hiding a control in React is not sufficient.
 
-Relationships, constraints, and database technology must be confirmed in the TDD before implementation.
+## 5. Circulation workflow and states
 
-## 7. External Interface Requirements
+```mermaid
+flowchart TD
+    A[Check member and copy] --> B{Member active and copy available?}
+    B -- No --> C[Reject issue and explain why]
+    B -- Yes --> D[Create active loan with issue and due dates]
+    D --> E[Copy status: On Loan]
+    E --> F[Member returns book]
+    F --> G[Librarian records return]
+    G --> H[Close loan and record return date]
+    H --> I{Copy in good condition?}
+    I -- Yes --> J[Copy status: Available]
+    I -- No --> K[Copy status: Maintenance]
+    E --> L{Due date passed and not returned?}
+    L -- Yes --> M[Show as overdue]
+```
 
-### 7.1 Frontend
-The web interface shall support catalogue browsing, member views, librarian circulation operations, and admin functions according to permissions. Responsive behavior and accessible form feedback should be provided.
+Suggested states:
 
-### 7.2 Backend
-The backend shall expose REST-style endpoints using FastAPI. Exact endpoint names and response schemas are implementation decisions to be documented in the TDD and API specification.
+| Entity | States |
+|---|---|
+| Book copy | Available, On Loan, Unavailable, Maintenance |
+| Borrow request (Beta) | Pending, Approved, Rejected, Cancelled, Fulfilled |
+| Loan | Active, Returned, Lost (if loss handling is approved) |
+| Payment transaction (Future) | Pending, Succeeded, Failed, Cancelled, Refunded (if refunds are supported) |
 
-### 7.3 Error Responses
-Errors should use consistent JSON structures and appropriate HTTP status codes. Responses must not expose stack traces, secrets, or unnecessary personal data.
+Overdue is a condition of an active loan, not a replacement for the loan's status.
 
-## 8. Non-Functional Requirements
+## 6. Non-functional requirements
 
-- **Security:** enforce authentication and authorization server-side; validate input; protect credentials and secrets.
-- **Privacy:** limit access to personal and circulation records by role and ownership.
-- **Integrity:** preserve consistency across copy, request, and loan states; use database constraints or transactions where needed.
-- **Usability:** provide clear status labels, validation messages, and confirmation for sensitive operations.
-- **Maintainability:** separate UI components, API clients, business logic, and data models.
-- **Reliability:** fail safely when an operation cannot be completed; avoid partially updated circulation records.
-- **Testability:** provide unit, API, authorization, and workflow tests.
-- **Performance:** common catalogue and loan queries should remain responsive for the expected deployment size; numeric targets should be set after expected usage is known.
-- **Accessibility:** use semantic controls, keyboard-accessible navigation, and labels for form inputs.
+| ID | Category | Requirement | Release |
+|---|---|---|---|
+| NFR-01 | Usability | Forms show clear validation, loading, empty, success, and error states. | MVP |
+| NFR-02 | Integrity | A physical copy cannot have two active loans at the same time. | MVP |
+| NFR-03 | Persistence | Core records survive application restarts and redeploys in the deployed configuration. | MVP local tests; Beta deployment |
+| NFR-04 | Maintainability | UI, API routes, business logic, and data-access code are separated. | MVP |
+| NFR-05 | API usability | API routes have request/response schemas and interactive docs. | MVP |
+| NFR-06 | Security | Protected endpoints enforce authentication and authorization server-side. | Beta |
+| NFR-07 | Privacy | Members cannot access another Member's personal records. | Beta |
+| NFR-08 | Credential security | Passwords are hashed; secrets are kept in environment configuration and never committed. | Beta |
+| NFR-09 | Error handling | Errors do not expose stack traces, secrets, or unnecessary personal data. | Beta |
+| NFR-10 | Auditability | Important circulation and admin actions can be traced to an actor and timestamp. | Beta |
+| NFR-11 | Performance | For expected initial usage, common catalogue and loan queries should normally complete within about one second, excluding deployment cold starts. | Beta target |
+| NFR-12 | Payment safety | Payment provider secrets and raw payment credentials are never stored by the LMS. | Future |
+| NFR-13 | Payment integrity | Payment status is verified server-side and repeated callbacks are handled idempotently. | Future |
 
-## 9. Acceptance Criteria
+## 7. Acceptance criteria
 
-- A Member can search for books and see availability.
-- A Member can submit a valid borrowing request.
-- A Librarian can approve/reject requests and issue/return books.
-- The system prevents a copy from having two active loans.
-- Returning a book updates the loan and copy state consistently.
-- Overdue active loans can be identified.
-- Members cannot access other members' private records.
-- Unauthorized roles are blocked by the API, not merely by the UI.
-- No payment gateway or online payment collection exists.
-- Automated tests cover core success paths and important failure cases.
+### MVP
 
-## 10. Open Questions
+**AC-01 — Catalogue:** A valid book can be created and appears in the catalogue. An invalid required title is rejected with a validation message.
 
-Confirm before production release:
-- Loan durations and limits for Students and Teachers.
-- Whether reservations and renewals are supported.
-- Whether fine records are needed at all; if yes, the policy and manual settlement process.
-- Account creation and password recovery approach.
-- Database and deployment target.
-- Notification channels, data retention, and backup requirements.
+**AC-02 — Copies:** A copy has a unique code and a clear status. Duplicate copy codes are rejected.
+
+**AC-03 — Issue:** Issuing an available copy to an active member creates one active loan with issue and due dates and marks the copy On Loan.
+
+**AC-04 — Duplicate issue prevention:** Attempting to issue the same copy again while its current loan is active is rejected and leaves the existing loan unchanged.
+
+**AC-05 — Return:** Returning an active loan stores the return date, closes the loan, and makes the copy Available unless it is marked for maintenance.
+
+**AC-06 — Overdue:** An active loan past its due date appears in the overdue list; a returned loan does not remain overdue.
+
+**AC-07 — Health/docs:** The health endpoint returns a successful status, and API docs describe the available MVP endpoints.
+
+### Beta
+
+**AC-08 — Role enforcement:** Member requests to catalogue-management or circulation-staff endpoints are rejected by the API.
+
+**AC-09 — Member privacy:** Member A cannot retrieve Member B's personal loan history by changing an identifier.
+
+**AC-10 — Borrow request:** A Member can submit an eligible request and a Librarian can approve or reject it; invalid state transitions are rejected.
+
+**AC-11 — Admin controls:** Only an Admin can change account roles or borrowing-policy settings.
+
+**AC-12 — Deployment:** The deployed application uses persistent storage, HTTPS, and environment-based secrets.
+
+### Future Phase
+
+**AC-13 — Provider verification:** A successful browser redirect alone cannot mark a payment as paid; the backend verifies provider status.
+
+**AC-14 — Duplicate callbacks:** Replaying the same provider callback does not create a duplicate successful transaction.
+
+**AC-15 — Safe storage:** Payment records contain provider references and payment metadata only, not raw card or banking credentials.
+
+## 8. Status codes and error behavior
+
+| Case | Expected status |
+|---|---:|
+| Resource created | `201 Created` |
+| Successful read/update | `200 OK` |
+| Successful deletion with no response body | `204 No Content` |
+| Invalid request data | `422 Unprocessable Entity` |
+| Resource not found or private resource is not visible to caller | `404 Not Found` |
+| Missing or invalid login credentials | `401 Unauthorized` |
+| Authenticated user lacks permission | `403 Forbidden` |
+| Duplicate unique record or conflicting circulation action | `409 Conflict` |
+| Unexpected server error | `500 Internal Server Error` with generic response |
+
+Exact responses should remain consistent across endpoints. Sensitive implementation details should be logged server-side, not returned to clients.
+
+## 9. Traceability
+
+| Story | Requirements | Release |
+|---|---|---|
+| US-01 | FR-01–FR-03 | MVP |
+| US-02 | FR-04–FR-06 | MVP |
+| US-03 | FR-07 | MVP |
+| US-04 | FR-08 | MVP |
+| US-05 | FR-09 | MVP |
+| US-06 | FR-10–FR-11 | MVP |
+| US-07 | FR-12–FR-13 | MVP |
+| US-08 | FR-14–FR-18 | Beta |
+| US-09–US-10 | FR-21–FR-23 | Beta |
+| US-11 | FR-19–FR-20, FR-23 | Beta |
+| US-12 | FR-24–FR-25 | Beta |
+| US-13 | FR-26–FR-27 | Beta |
+| US-14 | NFR-06–NFR-11 | Beta |
+| US-15–US-17 | FR-28–FR-33, NFR-12–NFR-13 | Future Phase |
+
+## 10. Open decisions
+
+- Confirm loan duration, Student/Teacher limits, renewal rules, and reservation expiry.
+- Decide whether a member request reserves a copy or is simply a request until staff approval.
+- Confirm how member accounts are created and recovered.
+- Select the production database and deployment configuration.
+- Decide whether fines exist; if yes, define amount calculation, waiver authority, and dispute process.
+- Select payment provider, currency, supported payment methods, refunds, and transaction reconciliation before starting the Future Phase.

@@ -1,139 +1,208 @@
-# Product Requirements Document (PRD)
-## Library Management System
+# Product Requirements Document (PRD) — Library Management System
 
-**Document status:** Initial product baseline  
-**Version:** 1.0
+| Field | Value |
+|---|---|
+| Product | Library Management System (LMS) |
+| Version | MVP + Beta + Future Phase |
+| Releases | MVP — Midterm; Beta — Final; Payment Features — Future Development |
+| Status | Draft baseline |
+| Related documents | `SRS.md`, `TDD.md` |
 
-## 1. Product Overview
+This document defines what the product should do and why. Features are assigned to a release so the initial version stays achievable and later development is planned without overloading the first release.
 
-The Library Management System (LMS) is a web application for managing a library's catalogue, physical book copies, members, borrowing, returns, due dates, and overdue records. It is intended to replace fragmented manual processes with a consistent, auditable workflow.
+## Documents in this set
 
-The system does **not** process payments or online transactions. Borrowing and returning books are the core circulation workflows. If the library has fines or repayment rules, staff may record the amount and whether it has been settled; the system does not collect money.
+| Document | Purpose |
+|---|---|
+| `PRD.md` | What the system does and why |
+| `SRS.md` | Detailed requirements, permissions, and acceptance criteria |
+| `TDD.md` | Architecture, data model, APIs, and technical decisions |
 
-## 2. Product Goals
+## 0. Release plan
 
-- Maintain accurate book, copy, and member records.
-- Let members discover books and view availability.
-- Allow members to submit borrowing requests.
-- Let librarians approve or reject requests and issue books.
-- Track loan dates, due dates, returns, and overdue loans.
-- Provide administrators with user, role, configuration, and reporting controls.
-- Enforce role-based access and protect members' private records.
-- Keep circulation history available for operational reporting.
+| Release | Target | Focus |
+|---|---|---|
+| **MVP** | Midterm release | Core catalogue and circulation: books, copies, members, issue, return, and due dates |
+| **Beta** | Final release | Login, role-based access, member self-service, borrow requests, dashboards, security, and deployment hardening |
+| **Future Phase** | After Beta | Optional fines and payment-provider integration for approved library charges |
 
-## 3. Users and Roles
+> **Payment scope:** No online payment processing is included in MVP or Beta. The future phase may support payment of library fines or other explicitly approved charges. Book borrowing and return must work without online payments.
 
-The system has three top-level roles.
+## 1. Purpose
 
-### 3.1 Member
-A Member can be classified as a Student or Teacher subtype. These are member categories, not separate top-level authorization roles.
+The Library Management System helps a library maintain its catalogue and physical copies, register members, issue and receive books, track due dates, and identify overdue loans. The project will be delivered incrementally: first a reliable core system, then secure multi-user capabilities, followed by optional online payments as a separate future enhancement.
 
-Members can:
-- Browse and search the catalogue.
-- View book descriptions and availability.
-- Submit and cancel eligible borrow requests.
-- View their own current loans, due dates, borrowing history, and account profile.
-- View any recorded overdue status or fine/settlement information applicable to their account.
+## 2. Problem statement
 
-Members cannot approve their own requests, change catalogue records, alter loan records, or view another member's private information.
+Manual or disconnected records make it difficult to know which copies are available, who borrowed a book, when it is due, and whether it has been returned. The system should keep this information in one place and make routine library work easier without introducing unnecessary complexity.
 
-### 3.2 Librarian
-Librarians manage day-to-day library operations. They can:
-- Create, view, update, and archive catalogue records.
-- Manage physical copies and their status.
-- View member records as needed for circulation.
-- Review, approve, or reject borrowing requests.
-- Issue books, record returns, and update copy availability.
-- Identify overdue loans and record any applicable fine or repayment settlement manually.
-- Access circulation records required for library operations.
+## 3. Goals
 
-### 3.3 Admin
-Administrators manage the system. They can:
-- Create, update, deactivate, and manage user accounts.
-- Assign and change roles.
-- Configure system-wide borrowing rules and member-category limits.
-- View system reports and audit activity.
-- Manage application settings.
+| ID | Goal | Release |
+|---|---|---|
+| G-01 | Create, view, update, and archive book catalogue records | MVP |
+| G-02 | Track individual book copies and their availability | MVP |
+| G-03 | Maintain member records and Student/Teacher member categories | MVP |
+| G-04 | Record book issue, due date, return, and loan status | MVP |
+| G-05 | Identify overdue active loans and show clear API errors | MVP |
+| G-06 | Provide a working React interface connected to the FastAPI REST API | MVP |
+| G-07 | Add login, account management, and server-side permissions | Beta |
+| G-08 | Let members view their own loans and submit borrowing requests | Beta |
+| G-09 | Give Librarians circulation tools and Admins user/policy controls | Beta |
+| G-10 | Deploy the application with secure configuration and persistent storage | Beta |
+| G-11 | Optionally record fines and integrate a payment provider without storing payment-card data | Future Phase |
 
-## 4. Scope
+## 4. Target users and roles
 
-### 4.1 MVP — Core Library Operations
+| User | Main need | Release |
+|---|---|---|
+| Member | Search the catalogue, request books, and view own loans and due dates | MVP catalogue visibility; Beta self-service |
+| Librarian | Manage catalogue and copies, issue/return books, and handle requests | MVP core circulation; Beta authenticated operations |
+| Admin | Manage accounts, roles, borrowing rules, and reports | Beta |
+| Maintainer | Check API health, review API documentation, and deploy reliably | MVP foundations; Beta production hardening |
 
-- Authentication and account management foundation.
-- Role-based authorization for Member, Librarian, and Admin.
-- Catalogue search and book details.
-- Book-copy inventory and availability status.
-- Borrow-request submission and staff review.
-- Issue and return workflows.
-- Due-date and overdue tracking.
-- Member profile and personal loan history.
-- Basic operational dashboard and reports.
-- Input validation, error handling, and automated tests.
+The system has three top-level roles: **Member, Librarian, and Admin**. Student and Teacher are Member subtypes, not separate roles. Borrowing limits may vary by subtype through configuration.
 
-### 4.2 Beta — Extended Operations
+## 5. Scope
 
-- More complete authentication and account recovery.
-- Fine policy configuration, if required by the library.
-- Manual recording of fine amounts and settlement status; no payment gateway.
-- Notifications for request decisions, upcoming due dates, and overdue items.
-- Enhanced reports and audit history.
-- Improved search, filtering, and pagination.
-- Deployment, monitoring, backups, and operational hardening.
+### 5.1 In scope — MVP (midterm)
 
-### 4.3 Out of Scope
+- Book catalogue CRUD: create, list, view, update, and archive books.
+- Physical copy records with unique copy codes and availability status.
+- Basic member records, including Student/Teacher subtype and active status.
+- Issue a copy to a member and record the issue date and due date.
+- Record returns and update copy availability.
+- List current loans, returned loans, and overdue active loans.
+- React pages/forms for the core workflows and FastAPI REST endpoints.
+- Input validation, consistent errors, health check, and interactive API documentation.
+- Local development with persistent relational storage selected for the implementation.
 
-- Online payment processing, payment gateways, wallets, or card handling.
-- E-commerce or book sales.
-- Automated money transfers or financial-account integration.
-- Public self-registration unless explicitly approved by the project owner.
-- Integrations with external institutional systems unless separately specified.
+**MVP limitation:** It is a development/demo release and does not provide full login or role enforcement. It must not be exposed as a public production library service until the Beta security work is completed.
 
-## 5. Key Workflows
+### 5.2 In scope — Beta (final)
 
-### 5.1 Borrowing
-1. A Member searches for a book and checks availability.
-2. The Member submits a borrow request.
-3. A Librarian reviews the request and approves or rejects it.
-4. When approved and a copy is available, the Librarian issues the book and records the issue date and due date.
-5. The system updates the copy and loan statuses.
+- User login/logout and account status management.
+- Three top-level roles: Member, Librarian, and Admin; enforce permissions in the backend.
+- Link Member accounts to their member profile; Student and Teacher remain member subtypes.
+- Members can browse books, submit/cancel eligible borrow requests, and view their own current loans and history.
+- Librarians can approve/reject requests, issue books, record returns, manage copies, and view overdue loans.
+- Admin can manage user accounts/roles, borrowing rules, and operational reports.
+- Server-side ownership checks, secure password storage, safe secrets configuration, and API error handling.
+- Deploy the frontend and API with a persistent database, HTTPS, health checks, and basic operational documentation.
 
-Approval and physical issue should be represented clearly; approving a request alone must not imply that a book has been handed over.
+### 5.3 Future Phase — payments
 
-### 5.2 Returning
-1. The Member returns the physical book to the library.
-2. The Librarian records the return.
-3. The system closes the loan and marks the copy available, unless the copy requires maintenance or has another status.
-4. If a fine policy exists, authorized staff may record the fine and its settlement status manually. No payment is processed by the application.
+- Configure fine rules, if the library decides to charge for overdue, lost, or damaged items.
+- Display a fine statement and payment status to the relevant Member.
+- Integrate a hosted checkout/payment provider after requirements, provider availability, and local compliance are reviewed.
+- Record provider transaction references, amount, currency, status, and timestamps.
+- Handle payment success, failure, cancellation, and verified provider callbacks.
+- Issue a receipt or payment confirmation and allow authorized staff to review payment history.
 
-### 5.3 Overdue
-The system identifies active loans past their due date. Librarians can review overdue records and follow the library's policy. Overdue status must not automatically mark a book as returned or automatically collect a fee.
+The application must not store card numbers, card security codes, banking passwords, or other raw payment credentials. Payment status must be confirmed by a trusted provider response—not merely by the user's browser redirect.
 
-## 6. Business Rules
+### 5.4 Out of scope for MVP and Beta
 
-- A physical copy cannot be issued to two active loans at the same time.
-- Only authorized Librarians can issue or return books.
-- Members can access only their own private loan and profile information.
-- Borrowing limits and loan periods are configurable; values must be confirmed with the library before production.
-- A request does not reserve or issue a copy unless the configured workflow explicitly says so.
-- A return is recorded only after staff confirm that the book has been received.
-- Fine and settlement records, if enabled, are administrative records only. The system does not collect payments.
-- Deactivated users cannot initiate new borrowing actions.
+- Online payment processing and payment gateway integration.
+- Book sales, e-commerce, or money transfers.
+- RFID/barcode hardware integration unless separately approved.
+- Inter-library loans, e-book DRM, and integrations with external institutional systems.
+- Advanced recommendation engines or analytics beyond basic operational reports.
 
-## 7. Success Criteria
+## 6. Features and priority (MoSCoW)
 
-- Catalogue records and copy availability remain consistent after issue and return operations.
-- Unauthorized users cannot perform restricted actions through either the UI or API.
-- The system prevents duplicate active loans for a single copy.
-- Members can find their own current loans and due dates.
-- Librarians can identify overdue loans and complete returns.
-- Core workflows have automated tests and clear error messages.
+| ID | Feature | Release | Priority |
+|---|---|---|---|
+| F-01 | Create/list/view/update/archive books | MVP | Must |
+| F-02 | Manage individual book copies and availability | MVP | Must |
+| F-03 | Create/view/update/deactivate member records | MVP | Must |
+| F-04 | Issue a book and set due date | MVP | Must |
+| F-05 | Record returns and free the copy when appropriate | MVP | Must |
+| F-06 | View active, returned, and overdue loans | MVP | Must |
+| F-07 | Validate input and return understandable API errors | MVP | Must |
+| F-08 | Health endpoint and interactive API documentation | MVP | Should |
+| F-09 | React interface for core workflows | MVP | Must |
+| F-10 | Login/logout and account status | Beta | Must |
+| F-11 | Member/Librarian/Admin RBAC and ownership checks | Beta | Must |
+| F-12 | Member profile and personal borrowing history | Beta | Must |
+| F-13 | Borrow request and librarian approval/rejection | Beta | Must |
+| F-14 | Admin account, role, and borrowing-policy management | Beta | Must |
+| F-15 | Librarian dashboard and basic circulation reports | Beta | Should |
+| F-16 | Deployment hardening, environment configuration, and backups plan | Beta | Must |
+| F-17 | Fine rules and manual fine records | Future Phase | Could |
+| F-18 | Hosted payment provider and transaction records for fines | Future Phase | Could |
+| F-19 | Payment receipts and reconciliation view | Future Phase | Could |
 
-## 8. Assumptions and Open Decisions
+## 7. User stories
 
-The following must be confirmed before production use:
-- Maximum active loans and loan period for each member subtype.
-- Whether borrowing requests expire or reserve a copy.
-- Renewal policy and renewal limits.
-- Whether fines are used, how they are calculated, and who can record settlement.
-- Whether notifications are required and which delivery channels are permitted.
-- Data retention, backup, and account recovery policies.
+### MVP
+
+| ID | User story | Feature |
+|---|---|---|
+| US-01 | As a Librarian, I want to add and update books so that the catalogue stays accurate. | F-01 |
+| US-02 | As a Librarian, I want to track each physical copy so I know what is available. | F-02 |
+| US-03 | As a Librarian, I want to register members so that loans can be associated with the correct person. | F-03 |
+| US-04 | As a Librarian, I want to issue a copy with a due date so that a loan is recorded. | F-04 |
+| US-05 | As a Librarian, I want to record a return so that the copy can become available again. | F-05 |
+| US-06 | As a Librarian, I want to see overdue loans so I can follow up on them. | F-06 |
+| US-07 | As a maintainer, I want a health endpoint and API docs so that I can check the service. | F-07, F-08 |
+
+### Beta
+
+| ID | User story | Feature |
+|---|---|---|
+| US-08 | As a Member, I want to log in and see my own loan records so my information remains private. | F-10, F-11, F-12 |
+| US-09 | As a Member, I want to request an available book so I can ask to borrow it. | F-13 |
+| US-10 | As a Librarian, I want to approve or reject requests so borrowing is controlled. | F-13 |
+| US-11 | As a Librarian, I want to manage catalogue and circulation after login. | F-11 |
+| US-12 | As an Admin, I want to manage accounts, roles, and borrowing rules. | F-14 |
+| US-13 | As a Librarian, I want to see active and overdue loans in one place. | F-15 |
+| US-14 | As a maintainer, I want secure deployment configuration and a persistent database. | F-16 |
+
+### Future Phase
+
+| ID | User story | Feature |
+|---|---|---|
+| US-15 | As a Member, I want to see an approved fine and pay it through a trusted provider if online payment is enabled. | F-17, F-18 |
+| US-16 | As a Member, I want a payment confirmation for a successful fine payment. | F-19 |
+| US-17 | As a Librarian, I want to review payment status without handling raw payment credentials. | F-18, F-19 |
+
+## 8. Success criteria
+
+| Release | Success criteria |
+|---|---|
+| MVP | A book can be created, found, updated, and archived; copy availability changes correctly after issue and return; active overdue loans can be listed; core API endpoints and frontend work locally. |
+| Beta | Unauthorized roles are blocked by the API; Members can only see their own profile and loans; Librarians can process requests and returns; Admins can manage accounts and rules; the deployed system retains data across restarts/redeploys. |
+| Future Phase | A payment is recorded only after provider verification; duplicate callbacks do not create duplicate successful payments; payment history and receipts are available; no raw card data is stored by the LMS. |
+
+## 9. Release milestones
+
+| MVP milestone | Deliverable |
+|---|---|
+| M1 — Catalogue | Book and copy data models and CRUD API |
+| M2 — Members | Member records and validation |
+| M3 — Circulation | Issue, return, due date, and overdue tracking |
+| M4 — Core demo | React workflows integrated with the FastAPI API; health/docs available |
+
+| Beta milestone | Deliverable |
+|---|---|
+| B1 — Accounts | Login/logout and account/profile foundation |
+| B2 — Permissions | Member, Librarian, and Admin roles enforced server-side |
+| B3 — Self-service | Member loans/history and borrow requests |
+| B4 — Staff/admin tools | Request review, dashboards, account and policy management |
+| B5 — Release | Persistent deployment, security checks, and documented setup |
+
+| Future milestone | Deliverable |
+|---|---|
+| P1 — Policy | Approved fine/charge rules and payment requirements |
+| P2 — Provider | Hosted checkout integration and verified callbacks in a test environment |
+| P3 — Reconciliation | Payment history, confirmation/receipt, failure handling, and security review |
+
+## 10. Assumptions and constraints
+
+- Frontend: React with TypeScript, built with the repository's Vite setup.
+- Backend: Python with FastAPI; the API returns JSON and exposes OpenAPI documentation.
+- The database must persist book, copy, member, and loan records. A local database can be used during development; hosted deployment requires storage that persists across restarts and serverless executions.
+- Exact loan duration and borrowing limits must be approved and configured rather than guessed.
+- Student and Teacher are Member subtypes, not separate top-level roles.
+- Payment provider, currency, fee rules, refund policy, and settlement procedure are undecided and belong to the Future Phase.
