@@ -26,6 +26,17 @@ type BookForm = {
   available_copies: string
 }
 
+type Borrowing = {
+  id: number
+  book_id: number
+  borrower_name: string
+  borrower_contact: string
+  borrowed_at: string
+  due_date: string
+  return_date: string | null
+  status: string
+}
+
 const emptyBookForm: BookForm = {
   title: '',
   author: '',
@@ -43,8 +54,8 @@ const routes: { path: Route; label: string }[] = [
   { path: '/borrow', label: 'Borrow Book' },
 ]
 
-function navigate(path: Route) {
-  window.history.pushState({}, '', path)
+function navigate(path: Route, query = '') {
+  window.history.pushState({}, '', `${path}${query}`)
   window.dispatchEvent(new PopStateEvent('popstate'))
 }
 
@@ -112,6 +123,8 @@ function App() {
           <CataloguePage onNavigate={navigate} />
         ) : path === '/books/add' ? (
           <AddBookPage onNavigate={navigate} />
+        ) : path === '/borrow' ? (
+          <BorrowBookPage onNavigate={navigate} />
         ) : (
           <PlaceholderPage title={currentPage} path={path} onNavigate={navigate} />
         )}
@@ -128,7 +141,7 @@ function App() {
   )
 }
 
-function CataloguePage({ onNavigate }: { onNavigate: (path: Route) => void }) {
+function CataloguePage({ onNavigate }: { onNavigate: (path: Route, query?: string) => void }) {
   const [books, setBooks] = useState<Book[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -173,14 +186,14 @@ function CataloguePage({ onNavigate }: { onNavigate: (path: Route) => void }) {
       )}
       {!loading && !error && books.length > 0 && (
         <div className="book-grid">
-          {books.map((book) => <BookCard book={book} key={book.id} />)}
+          {books.map((book) => <BookCard book={book} key={book.id} onBorrow={() => onNavigate('/borrow', `?bookId=${book.id}`)} />)}
         </div>
       )}
     </section>
   )
 }
 
-function BookCard({ book }: { book: Book }) {
+function BookCard({ book, onBorrow }: { book: Book; onBorrow: () => void }) {
   const available = book.available_copies > 0
   return (
     <article className="book-card">
@@ -200,7 +213,125 @@ function BookCard({ book }: { book: Book }) {
         <span>Copies</span>
         <strong>{book.available_copies} / {book.total_copies}</strong>
       </div>
+      <button className="book-card-action" disabled={!available} onClick={onBorrow}>
+        {available ? 'Borrow this book →' : 'Unavailable'}
+      </button>
     </article>
+  )
+}
+
+function BorrowBookPage({ onNavigate }: { onNavigate: (path: Route, query?: string) => void }) {
+  const [books, setBooks] = useState<Book[]>([])
+  const [bookId, setBookId] = useState(new URLSearchParams(window.location.search).get('bookId') ?? '')
+  const [name, setName] = useState('')
+  const [contact, setContact] = useState('')
+  const [dueDate, setDueDate] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [fieldError, setFieldError] = useState('')
+  const [confirmation, setConfirmation] = useState<Borrowing | null>(null)
+
+  useEffect(() => {
+    fetch('/api/books')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Unable to load available books.')
+        return response.json() as Promise<Book[]>
+      })
+      .then((data) => {
+        setBooks(data)
+        const selected = data.find((book) => String(book.id) === bookId && book.available_copies > 0)
+        if (!selected) setBookId(data.find((book) => book.available_copies > 0)?.id.toString() ?? '')
+      })
+      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Unable to load available books.'))
+      .finally(() => setLoading(false))
+  }, [bookId])
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setFieldError('')
+    setError('')
+    if (!bookId || !name.trim() || !contact.trim() || !dueDate) {
+      setFieldError('Choose a book and complete all borrower fields.')
+      return
+    }
+    setSaving(true)
+    try {
+      const response = await fetch('/api/borrowings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          book_id: Number(bookId),
+          borrower_name: name.trim(),
+          borrower_contact: contact.trim(),
+          due_date: dueDate,
+        }),
+      })
+      const result = await response.json() as Borrowing & { detail?: string }
+      if (!response.ok) throw new Error(result.detail ?? 'This book could not be borrowed.')
+      setConfirmation(result)
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : 'This book could not be borrowed.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const availableBooks = books.filter((book) => book.available_copies > 0)
+  if (loading) return <section className="form-page"><StateMessage title="Loading available books..." text="Just a moment while we fetch the latest availability." /></section>
+  if (confirmation) {
+    const borrowedBook = books.find((book) => book.id === confirmation.book_id)
+    return (
+      <section className="form-page">
+        <div className="success-panel">
+          <span className="success-icon">✓</span>
+          <p className="section-kicker">BORROWING CONFIRMED</p>
+          <h1>Enjoy your next read.</h1>
+          <p>{borrowedBook?.title ?? 'Your selected book'} has been reserved for {confirmation.borrower_name}.</p>
+          <div className="transaction-card">
+            <span>TRANSACTION ID</span>
+            <strong>#{confirmation.id}</strong>
+            <small>Keep this ID for future reference.</small>
+          </div>
+          <div className="hero-actions">
+            <button className="button button-primary" onClick={() => onNavigate('/books')}>Back to catalogue <span aria-hidden="true">→</span></button>
+            <button className="text-button" onClick={() => setConfirmation(null)}>Borrow another <span aria-hidden="true">↗</span></button>
+          </div>
+        </div>
+      </section>
+    )
+  }
+  if (!error && availableBooks.length === 0) {
+    return <section className="form-page"><StateMessage title="No books are available right now." text="Please check the catalogue again later." action="View catalogue" onAction={() => onNavigate('/books')} /></section>
+  }
+  return (
+    <section className="form-page">
+      <div className="form-heading">
+        <p className="section-kicker">TAKE A BOOK WITH YOU</p>
+        <h1>Borrow a book</h1>
+        <p>Choose an available title and tell us how to reach you. No account required.</p>
+      </div>
+      <form className="book-form borrow-form" onSubmit={submit} noValidate>
+        <label className="form-field full-width">
+          <span>Book *</span>
+          <select value={bookId} onChange={(event) => setBookId(event.target.value)}>
+            <option value="">Select a book</option>
+            {availableBooks.map((book) => <option value={book.id} key={book.id}>{book.title} — {book.available_copies} available</option>)}
+          </select>
+        </label>
+        <div className="form-grid borrow-fields">
+          <FormField label="Your name" name="borrower_name" value={name} error={fieldError && !name ? fieldError : undefined} onChange={setName} />
+          <FormField label="Contact information" name="borrower_contact" value={contact} hint="Email or phone number." onChange={setContact} />
+          <FormField label="Due date" name="due_date" type="date" value={dueDate} onChange={setDueDate} />
+        </div>
+        {fieldError && <p className="form-error form-submit-error" role="alert">{fieldError}</p>}
+        {error && <p className="form-error form-submit-error" role="alert">{error}</p>}
+        <div className="form-actions">
+          <button type="button" className="button button-secondary" onClick={() => onNavigate('/books')}>Cancel</button>
+          <button type="submit" className="button button-primary" disabled={saving}>{saving ? 'Confirming...' : 'Confirm borrowing'}</button>
+        </div>
+      </form>
+    </section>
   )
 }
 

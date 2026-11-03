@@ -76,6 +76,16 @@ h2 { color: #17231f; font-family: 'Playfair Display', serif; font-size: 35px; fo
 .book-card-details { display: flex; justify-content: space-between; padding-top: 12px; border-top: 1px solid #e4e9e1; color: #8a968e; font-size: 10px; }
 .book-card-details + .book-card-details { margin-top: 9px; }
 .book-card-details strong { color: #40554c; font-size: 11px; font-weight: 600; }
+.book-card-action { width: 100%; margin-top: 20px; border: 0; border-top: 1px solid #e4e9e1; padding: 14px 0 0; color: #205b4d; background: transparent; text-align: left; font-size: 11px; font-weight: 700; }
+.book-card-action:disabled { color: #9aa59f; cursor: not-allowed; }
+.book-card-action:not(:disabled):hover { color: #17483d; }
+.form-field select { width: 100%; border: 1px solid #ced9ce; border-radius: 3px; padding: 12px; color: #17231f; background: #f7f8f3; font: inherit; font-size: 13px; outline: none; }
+.form-field select:focus { border-color: #205b4d; box-shadow: 0 0 0 2px #e3ebe1; }
+.borrow-fields { margin-top: 22px; }
+.transaction-card { display: grid; max-width: 310px; gap: 7px; margin: 0 0 30px; border-left: 3px solid #205b4d; padding: 17px 20px; background: #edf1e9; }
+.transaction-card span { color: #9a6b45; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; }
+.transaction-card strong { color: #205b4d; font-family: 'Playfair Display', serif; font-size: 30px; font-weight: 500; }
+.transaction-card small { color: #718078; font-size: 11px; }
 .state-message { display: grid; justify-items: center; padding: 75px 20px; border: 1px dashed #cbd9ca; text-align: center; }
 .state-icon, .success-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 18px; border-radius: 50%; color: #205b4d; background: #e3ebe1; font-weight: 700; }
 .state-message h2 { margin-bottom: 10px; font-size: 27px; }
