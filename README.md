@@ -60,8 +60,11 @@ Copy-Item .env.example .env
 ```
 
 Set `DATABASE_URL` in `.env` to the Supabase PostgreSQL connection string.
-Do not commit `.env` or expose this value to the frontend. Apply the schema
-before starting the API:
+Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
+`SUPABASE_STORAGE_BUCKET` for book cover uploads. Create a public Storage
+bucket with the configured name in Supabase. Keep the service role key
+server-only: do not commit `.env` or expose it to the frontend. Apply the
+schema before starting the API:
 
 ```powershell
 $env:DATABASE_URL = "postgresql+psycopg://postgres:<password>@<host>:5432/postgres?sslmode=require"
@@ -80,7 +83,8 @@ API documentation: <http://127.0.0.1:8000/docs>
 
 The database health check is available at
 <http://127.0.0.1:8000/api/health/database>. The MVP database endpoints are
-`GET/POST /api/books`, `GET /api/books/{id}`, and `GET/POST /api/borrowings`.
+`GET/POST /api/books`, `POST /api/books/with-cover`, `GET /api/books/{id}`,
+and `GET/POST /api/borrowings`.
 
 ### Book catalogue API
 
@@ -90,6 +94,11 @@ to `total_copies` and cannot exceed it. The response is the created book with
 its generated `id` and timestamps. Duplicate ISBN values return `409 Conflict`.
 `GET /api/books` returns the catalogue, and `GET /api/books/{id}` returns one
 book or `404 Not Found`.
+
+`POST /api/books/with-cover` accepts the same book fields as multipart form
+data plus an optional JPEG, PNG, or WebP `cover` file up to 5 MB. The backend
+uploads the image to Supabase Storage and stores its public URL in
+`cover_image_url`; the service role key is never sent to the frontend.
 
 ### Borrowing API
 

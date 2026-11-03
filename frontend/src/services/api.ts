@@ -1,0 +1,35 @@
+import type { Book, BookInput, BookWithCoverInput, Borrowing } from '../types'
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = init?.body instanceof FormData
+  const response = await fetch(`/api${path}`, {
+    headers: isFormData ? init?.headers : { 'Content-Type': 'application/json', ...init?.headers },
+    ...init,
+  })
+  const body = await response.json() as T & { detail?: string }
+  if (!response.ok) {
+    throw new Error(body.detail ?? 'The request could not be completed.')
+  }
+  return body
+}
+
+export const getBooks = () => request<Book[]>('/books')
+
+export const createBook = (book: BookInput) => request<Book>('/books', {
+  method: 'POST',
+  body: JSON.stringify(book),
+})
+
+export const createBookWithCover = (book: BookWithCoverInput) => {
+  const form = new FormData()
+  Object.entries(book).forEach(([key, value]) => form.append(key, value instanceof File ? value : String(value)))
+  return request<Book>('/books/with-cover', { method: 'POST', headers: {}, body: form })
+}
+
+export const getBorrowing = (id: number) => request<Borrowing>(`/borrowings/${id}`)
+
+export const createBorrowing = (input: Pick<Borrowing, 'book_id' | 'borrower_name' | 'borrower_contact' | 'due_date'>) =>
+  request<Borrowing>('/borrowings', { method: 'POST', body: JSON.stringify(input) })
+
+export const returnBorrowing = (id: number) =>
+  request<Borrowing>(`/borrowings/${id}/return`, { method: 'POST' })
