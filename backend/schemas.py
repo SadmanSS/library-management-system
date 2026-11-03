@@ -23,6 +23,7 @@ class BookRead(BookCreate):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    cover_image_url: str | None = None
     available_copies: int
     created_at: datetime
     updated_at: datetime

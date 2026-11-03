@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from database import check_database_connection, get_session
 from models import Book, Borrowing
 from schemas import BookCreate, BookRead, BorrowingCreate, BorrowingRead
+from storage import upload_cover_image
 
 app = FastAPI(title="Library Management System API")
 
@@ -50,6 +51,49 @@ def create_book(book: BookCreate, session: Session = Depends(get_session)):
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A book with this ISBN already exists",
             ) from error
+        raise
+    session.refresh(db_book)
+    return db_book
+
+
+@app.post("/api/books/with-cover", response_model=BookRead, status_code=status.HTTP_201_CREATED)
+def create_book_with_cover(
+    title: str = Form(...),
+    author: str = Form(...),
+    isbn: str = Form(...),
+    category: str = Form(...),
+    total_copies: int = Form(...),
+    description: str | None = Form(None),
+    available_copies: int | None = Form(None),
+    cover: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        cover_url = upload_cover_image(cover.file.read(), cover.content_type or "")
+        book = BookCreate(
+            title=title,
+            author=author,
+            isbn=isbn,
+            category=category,
+            description=description,
+            total_copies=total_copies,
+            available_copies=available_copies,
+        )
+    except (ValueError, RuntimeError) as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+
+    db_book = Book(
+        **book.model_dump(exclude={"available_copies"}),
+        cover_image_url=cover_url,
+        available_copies=book.total_copies if book.available_copies is None else book.available_copies,
+    )
+    session.add(db_book)
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        if "isbn" in str(error.orig).lower():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A book with this ISBN already exists") from error
         raise
     session.refresh(db_book)
     return db_book
