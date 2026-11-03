@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 
-type Route = '/' | '/books' | '/books/add' | '/borrow'
+type Route = '/' | '/books' | '/books/add' | '/borrow' | '/return'
 type Book = {
   id: number
   title: string
@@ -52,6 +52,7 @@ const routes: { path: Route; label: string }[] = [
   { path: '/books', label: 'Book Catalogue' },
   { path: '/books/add', label: 'Add Book' },
   { path: '/borrow', label: 'Borrow Book' },
+  { path: '/return', label: 'Return Book' },
 ]
 
 function navigate(path: Route, query = '') {
@@ -125,6 +126,8 @@ function App() {
           <AddBookPage onNavigate={navigate} />
         ) : path === '/borrow' ? (
           <BorrowBookPage onNavigate={navigate} />
+        ) : path === '/return' ? (
+          <ReturnBookPage onNavigate={navigate} />
         ) : (
           <PlaceholderPage title={currentPage} path={path} onNavigate={navigate} />
         )}
@@ -255,6 +258,7 @@ function BorrowBookPage({ onNavigate }: { onNavigate: (path: Route, query?: stri
       setFieldError('Choose a book and complete all borrower fields.')
       return
     }
+
     setSaving(true)
     try {
       const response = await fetch('/api/borrowings', {
@@ -331,6 +335,110 @@ function BorrowBookPage({ onNavigate }: { onNavigate: (path: Route, query?: stri
           <button type="submit" className="button button-primary" disabled={saving}>{saving ? 'Confirming...' : 'Confirm borrowing'}</button>
         </div>
       </form>
+    </section>
+  )
+}
+
+function ReturnBookPage({ onNavigate }: { onNavigate: (path: Route, query?: string) => void }) {
+  const [transactionId, setTransactionId] = useState('')
+  const [borrowing, setBorrowing] = useState<Borrowing | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [returning, setReturning] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
+
+  async function findBorrowing(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setBorrowing(null)
+    setSuccess(false)
+    const id = Number(transactionId)
+    if (!Number.isInteger(id) || id < 1) {
+      setError('Enter a valid borrowing transaction ID.')
+      return
+    }
+    setLoading(true)
+    try {
+      const response = await fetch(`/api/borrowings/${id}`)
+      const result = await response.json() as Borrowing & { detail?: string }
+      if (!response.ok) throw new Error(result.detail ?? 'Borrowing transaction not found.')
+      setBorrowing(result)
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : 'Borrowing transaction not found.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function confirmReturn() {
+    if (!borrowing) return
+    setReturning(true)
+    setError('')
+    try {
+      const response = await fetch(`/api/borrowings/${borrowing.id}/return`, { method: 'POST' })
+      const result = await response.json() as Borrowing & { detail?: string }
+      if (!response.ok) throw new Error(result.detail ?? 'This book could not be returned.')
+      setBorrowing(result)
+      setSuccess(true)
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : 'This book could not be returned.')
+    } finally {
+      setReturning(false)
+    }
+  }
+
+  return (
+    <section className="form-page return-page">
+      <div className="form-heading">
+        <p className="section-kicker">BRING IT BACK</p>
+        <h1>Return a book</h1>
+        <p>Enter the borrowing transaction ID to process a return. No account required.</p>
+      </div>
+      <form className="book-form return-form" onSubmit={findBorrowing} noValidate>
+        <label className="form-field full-width">
+          <span>Borrowing transaction ID *</span>
+          <input type="number" min="1" value={transactionId} onChange={(event) => {
+            setTransactionId(event.target.value)
+            setError('')
+            setBorrowing(null)
+            setSuccess(false)
+          }} placeholder="e.g. 42" aria-describedby="return-help" />
+          <small id="return-help">You received this ID when the book was borrowed.</small>
+        </label>
+        {error && <p className="form-error form-submit-error" role="alert">{error}</p>}
+        {!borrowing && (
+          <div className="form-actions">
+            <button type="button" className="button button-secondary" onClick={() => onNavigate('/books')}>Cancel</button>
+            <button type="submit" className="button button-primary" disabled={loading}>{loading ? 'Finding transaction...' : 'Find borrowing'}</button>
+          </div>
+        )}
+      </form>
+
+      {borrowing && (
+        <div className={success ? 'return-result success-result' : 'return-result'}>
+          <div className="return-result-heading">
+            <span className="success-icon">{success ? '✓' : '?'}</span>
+            <div>
+              <p className="section-kicker">{success ? 'RETURN COMPLETE' : 'TRANSACTION FOUND'}</p>
+              <h2>{success ? 'Book returned successfully.' : 'Review this borrowing.'}</h2>
+            </div>
+          </div>
+          <div className="return-details">
+            <span>Transaction <strong>#{borrowing.id}</strong></span>
+            <span>Borrower <strong>{borrowing.borrower_name}</strong></span>
+            <span>Status <strong>{borrowing.status}</strong></span>
+            {borrowing.return_date && <span>Returned <strong>{new Date(borrowing.return_date).toLocaleDateString()}</strong></span>}
+          </div>
+          {!success && borrowing.status === 'active' && (
+            <div className="form-actions">
+              <button type="button" className="button button-secondary" onClick={() => setBorrowing(null)}>Cancel</button>
+              <button type="button" className="button button-primary" onClick={confirmReturn} disabled={returning}>{returning ? 'Processing return...' : 'Return this book'}</button>
+            </div>
+          )}
+          {!success && borrowing.status === 'returned' && <p className="form-error" role="alert">This book has already been returned.</p>}
+          {success && <button className="button button-primary" onClick={() => onNavigate('/books')}>View updated catalogue <span aria-hidden="true">→</span></button>}
+        </div>
+      )}
     </section>
   )
 }
