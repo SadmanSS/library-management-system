@@ -1,7 +1,40 @@
 import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 import './App.css'
 
 type Route = '/' | '/books' | '/books/add' | '/borrow'
+type Book = {
+  id: number
+  title: string
+  author: string
+  isbn: string
+  category: string
+  description: string | null
+  total_copies: number
+  available_copies: number
+  created_at: string
+  updated_at: string
+}
+
+type BookForm = {
+  title: string
+  author: string
+  isbn: string
+  category: string
+  description: string
+  total_copies: string
+  available_copies: string
+}
+
+const emptyBookForm: BookForm = {
+  title: '',
+  author: '',
+  isbn: '',
+  category: '',
+  description: '',
+  total_copies: '1',
+  available_copies: '',
+}
 
 const routes: { path: Route; label: string }[] = [
   { path: '/', label: 'Home' },
@@ -75,6 +108,10 @@ function App() {
       <main>
         {path === '/' ? (
           <HomePage onNavigate={navigate} />
+        ) : path === '/books' ? (
+          <CataloguePage onNavigate={navigate} />
+        ) : path === '/books/add' ? (
+          <AddBookPage onNavigate={navigate} />
         ) : (
           <PlaceholderPage title={currentPage} path={path} onNavigate={navigate} />
         )}
@@ -87,6 +124,209 @@ function App() {
           <span>© 2026 LMS</span>
         </div>
       </footer>
+    </div>
+  )
+}
+
+function CataloguePage({ onNavigate }: { onNavigate: (path: Route) => void }) {
+  const [books, setBooks] = useState<Book[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    fetch('/api/books')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Unable to load the book catalogue.')
+        return response.json() as Promise<Book[]>
+      })
+      .then((data) => {
+        if (active) setBooks(data)
+      })
+      .catch((reason: unknown) => {
+        if (active) setError(reason instanceof Error ? reason.message : 'Unable to load the book catalogue.')
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  return (
+    <section className="catalogue-page">
+      <div className="catalogue-heading">
+        <div>
+          <p className="section-kicker">THE COLLECTION</p>
+          <h1>Book catalogue</h1>
+          <p>Find your next great read from our growing collection.</p>
+        </div>
+        <button className="button button-primary" onClick={() => onNavigate('/books/add')}>
+          Add a book <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      {loading && <StateMessage title="Loading the collection..." text="Just a moment while we fetch the latest books." />}
+      {!loading && error && <StateMessage title="We couldn't load the catalogue." text={error} action="Try again" onAction={() => window.location.reload()} />}
+      {!loading && !error && books.length === 0 && (
+        <StateMessage title="The catalogue is waiting for its first book." text="Add a title to start building the collection." action="Add the first book" onAction={() => onNavigate('/books/add')} />
+      )}
+      {!loading && !error && books.length > 0 && (
+        <div className="book-grid">
+          {books.map((book) => <BookCard book={book} key={book.id} />)}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function BookCard({ book }: { book: Book }) {
+  const available = book.available_copies > 0
+  return (
+    <article className="book-card">
+      <div className="book-card-top">
+        <span className="book-category">{book.category}</span>
+        <span className={available ? 'availability available' : 'availability unavailable'}>
+          {available ? `${book.available_copies} available` : 'Currently unavailable'}
+        </span>
+      </div>
+      <h2>{book.title}</h2>
+      <p className="book-author">by {book.author}</p>
+      <div className="book-card-details">
+        <span>ISBN</span>
+        <strong>{book.isbn}</strong>
+      </div>
+      <div className="book-card-details">
+        <span>Copies</span>
+        <strong>{book.available_copies} / {book.total_copies}</strong>
+      </div>
+    </article>
+  )
+}
+
+function AddBookPage({ onNavigate }: { onNavigate: (path: Route) => void }) {
+  const [form, setForm] = useState<BookForm>(emptyBookForm)
+  const [errors, setErrors] = useState<Partial<Record<keyof BookForm, string>>>({})
+  const [submitError, setSubmitError] = useState('')
+  const [success, setSuccess] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  function updateField(field: keyof BookForm, value: string) {
+    setForm((current) => ({ ...current, [field]: value }))
+    setErrors((current) => ({ ...current, [field]: undefined }))
+    setSubmitError('')
+  }
+
+  function validate() {
+    const nextErrors: Partial<Record<keyof BookForm, string>> = {}
+    if (!form.title.trim()) nextErrors.title = 'Title is required.'
+    if (!form.author.trim()) nextErrors.author = 'Author is required.'
+    if (!form.isbn.trim()) nextErrors.isbn = 'ISBN is required.'
+    if (!form.category.trim()) nextErrors.category = 'Category is required.'
+    const total = Number(form.total_copies)
+    const available = form.available_copies === '' ? total : Number(form.available_copies)
+    if (!Number.isInteger(total) || total < 0) nextErrors.total_copies = 'Enter a whole number of 0 or more.'
+    if (!Number.isInteger(available) || available < 0 || available > total) {
+      nextErrors.available_copies = 'Available copies must not exceed total copies.'
+    }
+    setErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!validate()) return
+    setSaving(true)
+    setSubmitError('')
+    try {
+      const response = await fetch('/api/books', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: form.title.trim(),
+          author: form.author.trim(),
+          isbn: form.isbn.trim(),
+          category: form.category.trim(),
+          description: form.description.trim() || null,
+          total_copies: Number(form.total_copies),
+          ...(form.available_copies === '' ? {} : { available_copies: Number(form.available_copies) }),
+        }),
+      })
+      const result = await response.json() as { detail?: string }
+      if (!response.ok) throw new Error(result.detail ?? 'Unable to add this book.')
+      setSuccess(true)
+    } catch (reason: unknown) {
+      setSubmitError(reason instanceof Error ? reason.message : 'Unable to add this book.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (success) {
+    return (
+      <section className="form-page">
+        <div className="success-panel">
+          <span className="success-icon">✓</span>
+          <p className="section-kicker">BOOK ADDED</p>
+          <h1>The collection just got better.</h1>
+          <p>Your book was added successfully and is now visible in the catalogue.</p>
+          <div className="hero-actions">
+            <button className="button button-primary" onClick={() => onNavigate('/books')}>View catalogue <span aria-hidden="true">→</span></button>
+            <button className="text-button" onClick={() => { setSuccess(false); setForm(emptyBookForm) }}>Add another book <span aria-hidden="true">+</span></button>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="form-page">
+      <div className="form-heading">
+        <p className="section-kicker">GROW THE COLLECTION</p>
+        <h1>Add a new book</h1>
+        <p>Share a title with the library community. Fields marked with * are required.</p>
+      </div>
+      <form className="book-form" onSubmit={submit} noValidate>
+        <div className="form-grid">
+          <FormField label="Title" name="title" value={form.title} error={errors.title} onChange={(value) => updateField('title', value)} />
+          <FormField label="Author" name="author" value={form.author} error={errors.author} onChange={(value) => updateField('author', value)} />
+          <FormField label="ISBN" name="isbn" value={form.isbn} error={errors.isbn} onChange={(value) => updateField('isbn', value)} />
+          <FormField label="Category" name="category" value={form.category} error={errors.category} onChange={(value) => updateField('category', value)} />
+          <FormField label="Total copies" name="total_copies" type="number" min="0" value={form.total_copies} error={errors.total_copies} onChange={(value) => updateField('total_copies', value)} />
+          <FormField label="Available copies" name="available_copies" type="number" min="0" value={form.available_copies} hint="Leave blank to use total copies." error={errors.available_copies} onChange={(value) => updateField('available_copies', value)} />
+        </div>
+        <label className="form-field full-width">
+          <span>Description <small>(optional)</small></span>
+          <textarea value={form.description} rows={4} onChange={(event) => updateField('description', event.target.value)} />
+        </label>
+        {submitError && <p className="form-error form-submit-error" role="alert">{submitError}</p>}
+        <div className="form-actions">
+          <button type="button" className="button button-secondary" onClick={() => onNavigate('/books')}>Cancel</button>
+          <button type="submit" className="button button-primary" disabled={saving}>{saving ? 'Adding book...' : 'Add book'}</button>
+        </div>
+      </form>
+    </section>
+  )
+}
+
+function FormField({ label, name, value, type = 'text', min, hint, error, onChange }: { label: string; name: string; value: string; type?: string; min?: string; hint?: string; error?: string; onChange: (value: string) => void }) {
+  return (
+    <label className="form-field">
+      <span>{label} *</span>
+      <input name={name} type={type} min={min} value={value} onChange={(event) => onChange(event.target.value)} aria-invalid={Boolean(error)} aria-describedby={error ? `${name}-error` : undefined} />
+      {hint && !error && <small>{hint}</small>}
+      {error && <small id={`${name}-error`} className="form-error">{error}</small>}
+    </label>
+  )
+}
+
+function StateMessage({ title, text, action, onAction }: { title: string; text: string; action?: string; onAction?: () => void }) {
+  return (
+    <div className="state-message">
+      <span className="state-icon">{action ? '!' : '...'}</span>
+      <h2>{title}</h2>
+      <p>{text}</p>
+      {action && onAction && <button className="button button-primary" onClick={onAction}>{action}</button>}
     </div>
   )
 }
