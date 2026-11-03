@@ -91,6 +91,16 @@ its generated `id` and timestamps. Duplicate ISBN values return `409 Conflict`.
 `GET /api/books` returns the catalogue, and `GET /api/books/{id}` returns one
 book or `404 Not Found`.
 
+### Borrowing API
+
+`POST /api/borrowings` accepts `book_id`, `borrower_name`, `borrower_contact`,
+and `due_date`. It returns `201 Created` with the borrowing transaction,
+including its `id`, `borrowed_at`, `return_date`, and `status`. The endpoint
+locks the selected book while checking and decrementing `available_copies`;
+it returns `404 Not Found` for an unknown book and `409 Conflict` when no
+copies are available. `GET /api/borrowings/{id}` returns a confirmation or
+`404 Not Found`.
+
 ## 3. Run the frontend
 
 Open a **second terminal**:

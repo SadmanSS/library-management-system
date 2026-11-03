@@ -75,18 +75,33 @@ def create_borrowing(
     borrowing: BorrowingCreate,
     session: Session = Depends(get_session),
 ):
-    book = session.get(Book, borrowing.book_id)
-    if book is None:
-        raise HTTPException(status_code=404, detail="Book not found")
-    if book.available_copies == 0:
-        raise HTTPException(status_code=409, detail="Book is not available")
+    if session.in_transaction():
+        session.rollback()
+    with session.begin():
+        book = session.scalar(
+            select(Book)
+            .where(Book.id == borrowing.book_id)
+            .with_for_update()
+        )
+        if book is None:
+            raise HTTPException(status_code=404, detail="Book not found")
+        if book.available_copies == 0:
+            raise HTTPException(status_code=409, detail="Book is not available")
 
-    book.available_copies -= 1
-    db_borrowing = Borrowing(**borrowing.model_dump())
-    session.add(db_borrowing)
-    session.commit()
+        book.available_copies -= 1
+        db_borrowing = Borrowing(**borrowing.model_dump())
+        session.add(db_borrowing)
+        session.flush()
     session.refresh(db_borrowing)
     return db_borrowing
+
+
+@app.get("/api/borrowings/{borrowing_id}", response_model=BorrowingRead)
+def get_borrowing(borrowing_id: int, session: Session = Depends(get_session)):
+    borrowing = session.get(Borrowing, borrowing_id)
+    if borrowing is None:
+        raise HTTPException(status_code=404, detail="Borrowing not found")
+    return borrowing
 
 
 @app.get("/api/borrowings", response_model=list[BorrowingRead])

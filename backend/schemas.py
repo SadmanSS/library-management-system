@@ -31,6 +31,7 @@ class BookRead(BookCreate):
 class BorrowingCreate(BaseModel):
     book_id: int
     borrower_name: str = Field(min_length=1, max_length=255)
+    borrower_contact: str = Field(min_length=1, max_length=255)
     due_date: date
 
 
@@ -39,4 +40,5 @@ class BorrowingRead(BorrowingCreate):
 
     id: int
     borrowed_at: datetime
-    returned_at: datetime | None
+    return_date: datetime | None
+    status: str
