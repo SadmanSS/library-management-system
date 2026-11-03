@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 from database import Base
 from database import get_session
-from main import app, create_book, create_borrowing, get_borrowing
+from main import app, create_book, create_borrowing, get_borrowing, return_borrowing
 from schemas import BookCreate, BorrowingCreate
 
 
@@ -86,6 +86,36 @@ def test_missing_borrowing_returns_not_found(session):
     assert error.value.status_code == 404
 
 
+def test_return_updates_borrowing_and_availability(session):
+    book = create_test_book(session)
+    borrowing = create_borrowing(borrowing_payload(book.id), session)
+
+    returned = return_borrowing(borrowing.id, session)
+
+    assert returned.status == "returned"
+    assert returned.return_date is not None
+    session.refresh(book)
+    assert book.available_copies == book.total_copies
+
+
+def test_returning_same_borrowing_twice_is_rejected(session):
+    book = create_test_book(session)
+    borrowing = create_borrowing(borrowing_payload(book.id), session)
+    return_borrowing(borrowing.id, session)
+
+    with pytest.raises(HTTPException) as error:
+        return_borrowing(borrowing.id, session)
+
+    assert error.value.status_code == 409
+
+
+def test_missing_return_transaction_returns_not_found(session):
+    with pytest.raises(HTTPException) as error:
+        return_borrowing(999, session)
+
+    assert error.value.status_code == 404
+
+
 def test_borrowing_http_endpoints(client):
     book_response = client.post(
         "/api/books",
@@ -120,3 +150,31 @@ def test_borrowing_http_endpoints(client):
             "due_date": "2026-12-02",
         },
     ).status_code == 409
+
+
+def test_return_http_endpoint(client):
+    book_response = client.post(
+        "/api/books",
+        json={
+            "title": "Returned Book",
+            "author": "Author",
+            "isbn": "9780000000001",
+            "category": "Fiction",
+            "total_copies": 1,
+        },
+    )
+    borrowing_response = client.post(
+        "/api/borrowings",
+        json={
+            "book_id": book_response.json()["id"],
+            "borrower_name": "Reader",
+            "borrower_contact": "reader@example.com",
+            "due_date": "2026-12-01",
+        },
+    )
+    borrowing_id = borrowing_response.json()["id"]
+
+    returned_response = client.post(f"/api/borrowings/{borrowing_id}/return")
+    assert returned_response.status_code == 200
+    assert returned_response.json()["status"] == "returned"
+    assert client.post(f"/api/borrowings/{borrowing_id}/return").status_code == 409

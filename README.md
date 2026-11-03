@@ -101,6 +101,12 @@ it returns `404 Not Found` for an unknown book and `409 Conflict` when no
 copies are available. `GET /api/borrowings/{id}` returns a confirmation or
 `404 Not Found`.
 
+`POST /api/borrowings/{id}/return` atomically marks an active borrowing as
+returned, records `return_date`, and restores one available copy. It returns
+the updated borrowing, `404 Not Found` for an unknown transaction, and
+`409 Conflict` if the transaction was already returned or the availability
+limit would be exceeded.
+
 ## 3. Run the frontend
 
 Open a **second terminal**:

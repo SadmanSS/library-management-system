@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import FastAPI
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import select
@@ -101,6 +103,51 @@ def get_borrowing(borrowing_id: int, session: Session = Depends(get_session)):
     borrowing = session.get(Borrowing, borrowing_id)
     if borrowing is None:
         raise HTTPException(status_code=404, detail="Borrowing not found")
+    return borrowing
+
+
+@app.post(
+    "/api/borrowings/{borrowing_id}/return",
+    response_model=BorrowingRead,
+)
+def return_borrowing(
+    borrowing_id: int,
+    session: Session = Depends(get_session),
+):
+    if session.in_transaction():
+        session.rollback()
+    with session.begin():
+        borrowing = session.scalar(
+            select(Borrowing)
+            .where(Borrowing.id == borrowing_id)
+            .with_for_update()
+        )
+        if borrowing is None:
+            raise HTTPException(status_code=404, detail="Borrowing not found")
+        if borrowing.status == "returned" or borrowing.return_date is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="This borrowing has already been returned",
+            )
+
+        book = session.scalar(
+            select(Book)
+            .where(Book.id == borrowing.book_id)
+            .with_for_update()
+        )
+        if book is None:
+            raise HTTPException(status_code=404, detail="Book not found")
+        if book.available_copies >= book.total_copies:
+            raise HTTPException(
+                status_code=409,
+                detail="Book availability cannot exceed total copies",
+            )
+
+        book.available_copies += 1
+        borrowing.status = "returned"
+        borrowing.return_date = datetime.now(timezone.utc)
+        session.flush()
+    session.refresh(borrowing)
     return borrowing
 
 
