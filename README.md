@@ -80,7 +80,16 @@ API documentation: <http://127.0.0.1:8000/docs>
 
 The database health check is available at
 <http://127.0.0.1:8000/api/health/database>. The MVP database endpoints are
-`POST/GET /api/books` and `POST/GET /api/borrowings`.
+`GET/POST /api/books`, `GET /api/books/{id}`, and `GET/POST /api/borrowings`.
+
+### Book catalogue API
+
+`POST /api/books` accepts `title`, `author`, `isbn`, `category`, `total_copies`,
+and optional `description` and `available_copies`. `available_copies` defaults
+to `total_copies` and cannot exceed it. The response is the created book with
+its generated `id` and timestamps. Duplicate ISBN values return `409 Conflict`.
+`GET /api/books` returns the catalogue, and `GET /api/books/{id}` returns one
+book or `404 Not Found`.
 
 ## 3. Run the frontend
 

@@ -19,7 +19,9 @@ class Book(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     author: Mapped[str] = mapped_column(String(255), nullable=False)
-    isbn: Mapped[str | None] = mapped_column(String(20), unique=True)
+    isbn: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    category: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(2000))
     total_copies: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     available_copies: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(

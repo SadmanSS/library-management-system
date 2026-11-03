@@ -1,13 +1,22 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class BookCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     author: str = Field(min_length=1, max_length=255)
-    isbn: str | None = Field(default=None, max_length=20)
-    total_copies: int = Field(default=1, ge=0)
+    isbn: str = Field(min_length=1, max_length=20)
+    category: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=2000)
+    total_copies: int = Field(ge=0)
+    available_copies: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_copy_counts(self):
+        if self.available_copies is not None and self.available_copies > self.total_copies:
+            raise ValueError("available_copies cannot exceed total_copies")
+        return self
 
 
 class BookRead(BookCreate):
