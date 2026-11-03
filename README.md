@@ -49,7 +49,23 @@ Install the backend dependencies:
 python -m pip install --upgrade pip
 ```
 ```bash
-python -m pip install fastapi uvicorn
+python -m pip install -r requirements.txt
+```
+
+Configure Supabase:
+
+```powershell
+cd backend
+Copy-Item .env.example .env
+```
+
+Set `DATABASE_URL` in `.env` to the Supabase PostgreSQL connection string.
+Do not commit `.env` or expose this value to the frontend. Apply the schema
+before starting the API:
+
+```powershell
+$env:DATABASE_URL = "postgresql+psycopg://postgres:<password>@<host>:5432/postgres?sslmode=require"
+alembic upgrade head
 ```
 
 Start the backend:
@@ -61,6 +77,10 @@ python -m uvicorn main:app --reload
 Backend: <http://127.0.0.1:8000>
 
 API documentation: <http://127.0.0.1:8000/docs>
+
+The database health check is available at
+<http://127.0.0.1:8000/api/health/database>. The MVP database endpoints are
+`POST/GET /api/books` and `POST/GET /api/borrowings`.
 
 ## 3. Run the frontend
 
@@ -88,4 +108,3 @@ Frontend: <http://localhost:5173>
 | PowerShell says scripts are disabled | Use the process-scoped execution policy command above, if permitted by your system administrator. |
 | Windows Application Control blocks a `.pyd` file during installation | Check Windows Security's protection history or your organization's security logs to identify the blocked file and policy. Use a compatible Python version and package combination. Do not disable security controls or bypass the policy. If the device is managed, contact the administrator. |
 | PyYAML fails to build during installation | Check the Python version and package compatibility. Try a supported Python version with compatible prebuilt wheels rather than forcing a source build. |
-
