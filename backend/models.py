@@ -38,18 +38,26 @@ class Borrowing(Base):
     __tablename__ = "borrowings"
     __table_args__ = (
         CheckConstraint(
-            "returned_at IS NULL OR returned_at >= borrowed_at",
-            name="ck_borrowings_returned_after_borrowed",
+            "return_date IS NULL OR return_date >= borrowed_at",
+            name="ck_borrowings_return_date_after_borrowed",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'returned')",
+            name="ck_borrowings_status_valid",
         ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     book_id: Mapped[int] = mapped_column(ForeignKey("books.id"), nullable=False)
     borrower_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    borrower_contact: Mapped[str] = mapped_column(String(255), nullable=False)
     borrowed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
-    returned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    return_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active", server_default="active"
+    )
 
     book: Mapped[Book] = relationship(back_populates="borrowings")
