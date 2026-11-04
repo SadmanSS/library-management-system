@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi import Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -12,6 +13,11 @@ from schemas import BookCreate, BookRead, BorrowingCreate, BorrowingRead
 from storage import upload_cover_image
 
 app = FastAPI(title="Library Management System API")
+
+
+@app.get("/api/docs", include_in_schema=False)
+def api_docs_redirect():
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/")
