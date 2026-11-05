@@ -10,10 +10,9 @@ type Props = {
 
 const links: { path: Route; label: string }[] = [
   { path: '/', label: 'Home' },
-  { path: '/books', label: 'Book Catalogue' },
-  { path: '/books/add', label: 'Add Book' },
-  { path: '/borrow', label: 'Borrow Book' },
-  { path: '/return', label: 'Return Book' },
+  { path: '/books', label: 'Catalog' },
+  { path: '/return', label: 'My loans' },
+  { path: '/borrow', label: 'Reservations' },
 ]
 
 export function Navbar({ path, menuOpen, onNavigate, onToggleMenu }: Props) {
@@ -21,8 +20,8 @@ export function Navbar({ path, menuOpen, onNavigate, onToggleMenu }: Props) {
     <header className="site-header">
       <div className="header-inner">
         <button className="brand" onClick={() => onNavigate('/')} aria-label="Go to home">
-          <img className="brand-logo" src={logo} alt="Library Management System" />
-          <span><strong>Library</strong><small>Management System</small></span>
+          <img className="brand-logo" src={logo} alt="" />
+          <span className="brand-name"><strong>Library</strong><small>Management System</small></span>
         </button>
         <button className="menu-toggle" onClick={onToggleMenu} aria-expanded={menuOpen} aria-label="Toggle navigation">
           <span /><span /><span />
@@ -35,7 +34,7 @@ export function Navbar({ path, menuOpen, onNavigate, onToggleMenu }: Props) {
             }}>{link.label}</button>
           ))}
         </nav>
-        <button className="header-action" onClick={() => onNavigate('/books/add')}>Add a book <span aria-hidden="true">+</span></button>
+        <button className="header-action" onClick={() => onNavigate('/profile')}>Profile</button>
       </div>
     </header>
   )

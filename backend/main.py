@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi import Depends, HTTPException, status
-from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -12,12 +11,12 @@ from models import Book, Borrowing
 from schemas import BookCreate, BookRead, BorrowingCreate, BorrowingRead
 from storage import upload_cover_image
 
-app = FastAPI(title="Library Management System API")
-
-
-@app.get("/api/docs", include_in_schema=False)
-def api_docs_redirect():
-    return RedirectResponse(url="/docs")
+app = FastAPI(
+    title="Library Management System API",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
 
 
 @app.get("/")
@@ -31,6 +30,7 @@ def health_check():
 
 
 @app.get("/api/health/database")
+@app.get("/api/database")
 def database_health_check():
     check_database_connection()
     return {"status": "ok", "database": "connected"}
@@ -116,6 +116,37 @@ def get_book(book_id: int, session: Session = Depends(get_session)):
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found")
     return book
+
+
+@app.put("/api/books/{book_id}", response_model=BookRead)
+def update_book(book_id: int, book: BookCreate, session: Session = Depends(get_session)):
+    db_book = session.get(Book, book_id)
+    if db_book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    for field, value in book.model_dump(exclude_none=True).items():
+        setattr(db_book, field, value)
+    if book.available_copies is None:
+        db_book.available_copies = min(db_book.available_copies, book.total_copies)
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        if "isbn" in str(error.orig).lower():
+            raise HTTPException(status_code=409, detail="A book with this ISBN already exists") from error
+        raise
+    session.refresh(db_book)
+    return db_book
+
+
+@app.delete("/api/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_book(book_id: int, session: Session = Depends(get_session)):
+    db_book = session.get(Book, book_id)
+    if db_book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if session.scalar(select(Borrowing.id).where(Borrowing.book_id == book_id).limit(1)) is not None:
+        raise HTTPException(status_code=409, detail="Books with borrowing history cannot be deleted")
+    session.delete(db_book)
+    session.commit()
 
 
 @app.post(

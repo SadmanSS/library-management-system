@@ -20,7 +20,7 @@ class Book(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     author: Mapped[str] = mapped_column(String(255), nullable=False)
     isbn: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
-    category: Mapped[str] = mapped_column(String(100), nullable=False)
+    category: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(String(2000))
     cover_image_url: Mapped[str | None] = mapped_column(String(2048))
     total_copies: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
