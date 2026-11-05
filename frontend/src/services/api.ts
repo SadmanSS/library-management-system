@@ -6,11 +6,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: isFormData ? init?.headers : { 'Content-Type': 'application/json', ...init?.headers },
     ...init,
   })
-  const body = await response.json() as T & { detail?: string }
+  const body = response.status === 204 ? undefined : await response.json() as T & { detail?: string }
   if (!response.ok) {
-    throw new Error(body.detail ?? 'The request could not be completed.')
+    throw new Error(body?.detail ?? 'The request could not be completed.')
   }
-  return body
+  return body as T
 }
 
 export const getBooks = () => request<Book[]>('/books')
