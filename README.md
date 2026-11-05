@@ -132,6 +132,9 @@ npm run dev
 
 Frontend: <http://localhost:5173>
 
+The Vercel frontend includes an SPA fallback so direct visits and browser
+reloads on routes such as `/books` continue to load the React application.
+
 ## Troubleshooting
 
 | Problem | Solution |
