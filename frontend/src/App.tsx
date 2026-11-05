@@ -6,10 +6,12 @@ import { AddBook } from './pages/AddBook'
 import { BookCatalogue } from './pages/BookCatalogue'
 import { BorrowBook } from './pages/BorrowBook'
 import { Home } from './pages/Home'
+import { EditBook } from './pages/EditBook'
+import { Profile } from './pages/Profile'
 import { ReturnBook } from './pages/ReturnBook'
 import type { Route } from './types'
 
-const paths: Route[] = ['/', '/books', '/books/add', '/borrow', '/return']
+const paths: Route[] = ['/', '/books', '/books/add', '/books/edit', '/profile', '/borrow', '/return']
 
 function getPath(): Route {
   const path = window.location.pathname as Route
@@ -34,6 +36,8 @@ function App() {
   const page = path === '/' ? <Home onNavigate={navigate} />
     : path === '/books' ? <BookCatalogue onNavigate={navigate} />
       : path === '/books/add' ? <AddBook onNavigate={navigate} />
+        : path === '/books/edit' ? <EditBook onNavigate={navigate} />
+        : path === '/profile' ? <Profile onNavigate={navigate} />
         : path === '/borrow' ? <BorrowBook onNavigate={navigate} />
           : <ReturnBook onNavigate={navigate} />
 

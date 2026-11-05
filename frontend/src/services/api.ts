@@ -14,6 +14,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const getBooks = () => request<Book[]>('/books')
+export const getBook = (id: number) => request<Book>(`/books/${id}`)
+export const updateBook = (id: number, book: BookInput) => request<Book>(`/books/${id}`, {
+  method: 'PUT',
+  body: JSON.stringify(book),
+})
+export const deleteBook = (id: number) => request<void>(`/books/${id}`, { method: 'DELETE' })
 
 export const createBook = (book: BookInput) => request<Book>('/books', {
   method: 'POST',
@@ -27,6 +33,8 @@ export const createBookWithCover = (book: BookWithCoverInput) => {
 }
 
 export const getBorrowing = (id: number) => request<Borrowing>(`/borrowings/${id}`)
+
+export const getBorrowings = () => request<Borrowing[]>('/borrowings')
 
 export const createBorrowing = (input: Pick<Borrowing, 'book_id' | 'borrower_name' | 'borrower_contact' | 'due_date'>) =>
   request<Borrowing>('/borrowings', { method: 'POST', body: JSON.stringify(input) })

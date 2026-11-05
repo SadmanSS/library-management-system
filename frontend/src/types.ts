@@ -1,4 +1,4 @@
-export type Route = '/' | '/books' | '/books/add' | '/borrow' | '/return'
+export type Route = '/' | '/books' | '/books/add' | '/books/edit' | '/profile' | '/borrow' | '/return'
 
 export type Book = {
   id: number
