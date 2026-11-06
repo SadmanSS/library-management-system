@@ -41,11 +41,17 @@
         "service": "backend"
       }
     },
+    
     {
       "source": "/(.*)",
       "destination": {
         "service": "frontend"
       }
+    },
+    
+    {
+     "source": "/(.*)",
+     "destination": "/"
     }
   ]
 }
