@@ -138,6 +138,55 @@ def update_book(book_id: int, book: BookCreate, session: Session = Depends(get_s
     return db_book
 
 
+@app.put("/api/books/{book_id}/with-cover", response_model=BookRead)
+def update_book_with_cover(
+    book_id: int,
+    title: str = Form(...),
+    author: str = Form(...),
+    isbn: str = Form(...),
+    category: str = Form(...),
+    total_copies: int = Form(...),
+    available_copies: int | None = Form(None),
+    description: str | None = Form(None),
+    cover: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    db_book = session.get(Book, book_id)
+    if db_book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    try:
+        cover_url = upload_cover_image(cover.file.read(), cover.content_type or "")
+        book = BookCreate(
+            title=title,
+            author=author,
+            isbn=isbn,
+            category=category,
+            description=description,
+            total_copies=total_copies,
+            available_copies=available_copies,
+        )
+    except (ValueError, RuntimeError) as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+
+    for field, value in book.model_dump(exclude={"available_copies"}).items():
+        setattr(db_book, field, value)
+    db_book.available_copies = (
+        min(db_book.available_copies, book.total_copies)
+        if book.available_copies is None
+        else book.available_copies
+    )
+    db_book.cover_image_url = cover_url
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        if "isbn" in str(error.orig).lower():
+            raise HTTPException(status_code=409, detail="A book with this ISBN already exists") from error
+        raise
+    session.refresh(db_book)
+    return db_book
+
+
 @app.delete("/api/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_book(book_id: int, session: Session = Depends(get_session)):
     db_book = session.get(Book, book_id)
