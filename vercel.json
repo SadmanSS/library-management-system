@@ -1,3 +1,4 @@
+
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
@@ -12,46 +13,16 @@
   },
   "rewrites": [
     {
-      "source": "/docs",
-      "destination": {
-        "service": "backend"
-      }
-    },
-    {
-      "source": "/docs/(.*)",
-      "destination": {
-        "service": "backend"
-      }
-    },
-    {
-      "source": "/openapi.json",
-      "destination": {
-        "service": "backend"
-      }
-    },
-    {
-      "source": "/redoc",
-      "destination": {
-        "service": "backend"
-      }
-    },
-    {
       "source": "/api/(.*)",
       "destination": {
         "service": "backend"
       }
     },
-    
     {
       "source": "/(.*)",
       "destination": {
         "service": "frontend"
       }
-    },
-    
-    {
-     "source": "/(.*)",
-     "destination": "/index.html"
     }
   ]
 }
