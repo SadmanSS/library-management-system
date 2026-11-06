@@ -47,11 +47,6 @@
       "destination": {
         "service": "frontend"
       }
-    },
-    
-    {
-     "source": "/(.*)",
-     "destination": "/index.html"
     }
   ]
 }
