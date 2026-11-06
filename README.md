@@ -71,6 +71,20 @@ $env:DATABASE_URL = "postgresql+psycopg://postgres:<password>@<host>:5432/postgr
 alembic upgrade head
 ```
 
+For Vercel deployments, add these variables in the Vercel project settings
+for the backend deployment and enable them for Production (and Preview if
+needed):
+
+```text
+DATABASE_URL
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_STORAGE_BUCKET
+```
+
+After saving the variables, redeploy the project. Local `.env` files are not
+uploaded to Vercel, and the service role key must remain server-only.
+
 Start the backend:
 
 ```bash
