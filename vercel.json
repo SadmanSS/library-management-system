@@ -51,7 +51,7 @@
     
     {
      "source": "/(.*)",
-     "destination": "/index.hmtl"
+     "destination": "/index.html"
     }
   ]
 }
