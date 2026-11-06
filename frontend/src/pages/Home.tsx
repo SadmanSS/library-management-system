@@ -11,6 +11,7 @@ export function Home({ onNavigate }: { onNavigate: (path: Route, query?: string)
   const [borrowings, setBorrowings] = useState<Borrowing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null)
   const [today] = useState(() => new Date())
   useEffect(() => {
     let active = true
@@ -77,7 +78,7 @@ export function Home({ onNavigate }: { onNavigate: (path: Route, query?: string)
                   : null}
               </div>
               <div className="shelfwise-book-info">
-                <h2>{book.title}</h2>
+                <h2><button className="book-title-button" onClick={() => setSelectedBook(book)}>{book.title}</button></h2>
                 <p>{book.author}</p>
                 <small>ISBN {book.isbn}</small>
               </div>
@@ -111,5 +112,34 @@ export function Home({ onNavigate }: { onNavigate: (path: Route, query?: string)
         </div>
       </aside>
     </main>
+    {selectedBook && <div className="book-details-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedBook(null) }}>
+      <div className="book-details-modal" role="dialog" aria-modal="true" aria-labelledby="book-details-title">
+        <div className="book-details-cover">
+          <span className="book-mark-fallback" aria-hidden="true">▤</span>
+          {selectedBook.cover_image_url && <CoverImage src={selectedBook.cover_image_url} alt={`Cover of ${selectedBook.title}`} />}
+        </div>
+        <div className="book-details-content">
+          <p className="section-kicker">BOOK DETAILS</p>
+          <h2 id="book-details-title">{selectedBook.title}</h2>
+          <p className="book-details-author">by {selectedBook.author}</p>
+          <dl className="book-details-list">
+            <div><dt>Category</dt><dd>{selectedBook.category}</dd></div>
+            <div><dt>ISBN</dt><dd>{selectedBook.isbn}</dd></div>
+            <div><dt>Total copies</dt><dd>{selectedBook.total_copies}</dd></div>
+            <div><dt>Available copies</dt><dd>{selectedBook.available_copies}</dd></div>
+          </dl>
+          <div className="book-details-description">
+            <strong>Description</strong>
+            <p>{selectedBook.description || 'No description is available for this book.'}</p>
+          </div>
+          <div className="book-details-actions">
+            <button className="button button-secondary" onClick={() => setSelectedBook(null)}>Cancel</button>
+            <button className="button button-primary" disabled={selectedBook.available_copies === 0} onClick={() => onNavigate('/borrow', `?bookId=${selectedBook.id}`)}>
+              {selectedBook.available_copies === 0 ? 'Unavailable' : 'Borrow'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>}
   </div>
 }

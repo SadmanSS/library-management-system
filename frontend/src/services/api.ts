@@ -19,6 +19,11 @@ export const updateBook = (id: number, book: BookInput) => request<Book>(`/books
   method: 'PUT',
   body: JSON.stringify(book),
 })
+export const updateBookWithCover = (id: number, book: BookInput & { cover: File }) => {
+  const form = new FormData()
+  Object.entries(book).forEach(([key, value]) => form.append(key, value instanceof File ? value : String(value ?? '')))
+  return request<Book>(`/books/${id}/with-cover`, { method: 'PUT', headers: {}, body: form })
+}
 export const deleteBook = (id: number) => request<void>(`/books/${id}`, { method: 'DELETE' })
 
 export const createBook = (book: BookInput) => request<Book>('/books', {
