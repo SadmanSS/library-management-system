@@ -1,4 +1,4 @@
-import type { Route } from '../../types'
+import type { Profile, Route } from '../../types'
 import logo from '../../assets/logo.jpg'
 
 type Props = {
@@ -6,20 +6,23 @@ type Props = {
   menuOpen: boolean
   onNavigate: (path: Route, query?: string) => void
   onToggleMenu: () => void
+  profile: Profile | null
+  onLogout: () => void
 }
 
-const links: { path: Route; label: string }[] = [
+const publicLinks: { path: Route; label: string }[] = [
   { path: '/', label: 'Home' },
   { path: '/books', label: 'Catalog' },
-  { path: '/return', label: 'My loans' },
-  { path: '/borrow', label: 'Reservations' },
 ]
 
-export function Navbar({ path, menuOpen, onNavigate, onToggleMenu }: Props) {
+export function Navbar({ path, profile, menuOpen, onNavigate, onToggleMenu, onLogout }: Props) {
+  const links = profile
+    ? [...publicLinks, ...(profile.role === 'librarian' ? [{ path: '/staff' as Route, label: 'Dashboard' }] : []), ...(profile.role === 'admin' ? [{ path: '/admin' as Route, label: 'Dashboard' }] : []), { path: '/return' as Route, label: 'My loans' }, { path: '/borrow' as Route, label: 'Reservations' }, ...(profile.role !== 'member' ? [{ path: '/books/add' as Route, label: 'Add book' }] : [])]
+    : [...publicLinks, { path: '/login' as Route, label: 'Log in' }]
   return (
     <header className="site-header">
       <div className="header-inner">
-        <button className="brand" onClick={() => onNavigate('/')} aria-label="Go to home">
+        <button className="brand" onClick={() => onNavigate(profile?.role === 'admin' ? '/admin' : profile?.role === 'librarian' ? '/staff' : '/')} aria-label="Go to home">
           <img className="brand-logo" src={logo} alt="" />
           <span className="brand-name"><strong>Library</strong><small>Management System</small></span>
         </button>
@@ -34,7 +37,7 @@ export function Navbar({ path, menuOpen, onNavigate, onToggleMenu }: Props) {
             }}>{link.label}</button>
           ))}
         </nav>
-        <button className="header-action" onClick={() => onNavigate('/profile')}>Profile</button>
+        {profile ? <button className="header-action" onClick={onLogout}>Log out</button> : <button className="header-action" onClick={() => onNavigate('/login')}>Log in</button>}
       </div>
     </header>
   )

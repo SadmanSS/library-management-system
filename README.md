@@ -61,7 +61,8 @@ Copy-Item .env.example .env
 
 Set `DATABASE_URL` in `.env` to the Supabase PostgreSQL connection string.
 Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
-`SUPABASE_STORAGE_BUCKET` for book cover uploads. Create a public Storage
+`SUPABASE_ANON_KEY`, `SUPABASE_STORAGE_BUCKET`, and optional
+`INITIAL_ADMIN_EMAIL` for authentication and book cover uploads. Create a public Storage
 bucket with the configured name in Supabase. Keep the service role key
 server-only: do not commit `.env` or expose it to the frontend. Apply the
 schema before starting the API:
@@ -78,12 +79,18 @@ needed):
 ```text
 DATABASE_URL
 SUPABASE_URL
+SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_STORAGE_BUCKET
+INITIAL_ADMIN_EMAIL
 ```
 
 After saving the variables, redeploy the project. Local `.env` files are not
 uploaded to Vercel, and the service role key must remain server-only.
+
+The first account whose email matches `INITIAL_ADMIN_EMAIL` becomes the
+initial administrator. All other registrations start as members. Admins can
+assign `member`, `librarian`, and `admin` roles from the admin dashboard.
 
 Start the backend:
 

@@ -9,7 +9,9 @@ from sqlalchemy.pool import StaticPool
 
 from database import Base
 from database import get_session
+from auth import get_current_profile
 from main import app, create_book, create_borrowing, get_borrowing, return_borrowing
+from models import Profile
 from schemas import BookCreate, BorrowingCreate
 
 
@@ -30,7 +32,11 @@ def client(session):
     def override_session():
         yield session
 
+    def override_profile():
+        return Profile(auth_user_id="test-admin", email="admin@example.com", role="admin")
+
     app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_current_profile] = override_profile
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

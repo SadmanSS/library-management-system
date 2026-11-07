@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { createBorrowing, getBooks } from '../services/api'
-import type { Book, Borrowing, Route } from '../types'
-import { FormField } from '../components/ui/FormField'
-import { StateMessage } from '../components/ui/StateMessage'
-import { CoverImage } from '../components/books/CoverImage'
+import { createBorrowing, getBooks } from '../../services/api'
+import type { Book, Borrowing, Route } from '../../types'
+import { FormField } from '../../components/ui/FormField'
+import { StateMessage } from '../../components/ui/StateMessage'
+import { CoverImage } from '../../components/books/CoverImage'
 
 export function BorrowBook({ onNavigate }: { onNavigate: (path: Route, query?: string) => void }) {
   const [books, setBooks] = useState<Book[]>([]); const [bookId, setBookId] = useState(new URLSearchParams(location.search).get('bookId') ?? ''); const [name, setName] = useState(''); const [contact, setContact] = useState(''); const [dueDate, setDueDate] = useState(''); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [confirmation, setConfirmation] = useState<Borrowing | null>(null)

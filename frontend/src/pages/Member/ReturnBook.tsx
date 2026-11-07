@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { getBorrowing, returnBorrowing } from '../services/api'
-import type { Borrowing, Route } from '../types'
+import { getBorrowing, returnBorrowing } from '../../services/api'
+import type { Borrowing, Route } from '../../types'
 
 export function ReturnBook({ onNavigate }: { onNavigate: (path: Route, query?: string) => void }) {
   const [id, setId] = useState(''); const [borrowing, setBorrowing] = useState<Borrowing | null>(null); const [loading, setLoading] = useState(false); const [returning, setReturning] = useState(false); const [error, setError] = useState(''); const [success, setSuccess] = useState(false)
