@@ -32,11 +32,17 @@ def _supabase_request(path: str, method: str = "GET", payload: dict | None = Non
             response_body = response.read()
             return json.loads(response_body) if response_body else {}
     except HTTPError as error:
+        raw = error.read()
         try:
-            error_body = json.loads(error.read())
-            detail = error_body.get("msg") or error_body.get("message") or error_body.get("error_description")
+            error_body = json.loads(raw)
+            detail = (
+                error_body.get("msg")
+                or error_body.get("message")
+                or error_body.get("error_description")
+                or error_body.get("error")
+            )
         except (ValueError, KeyError):
-            detail = None
+            detail = raw.decode(errors="replace")[:300] if raw else None
         raise HTTPException(status_code=error.code, detail=detail or "Authentication request failed") from error
     except URLError as error:
         raise HTTPException(status_code=503, detail="Authentication service is unavailable") from error
@@ -92,6 +98,7 @@ def get_current_profile(
             email=email,
             full_name=user_metadata.get("full_name"),
             phone=user_metadata.get("phone"),
+            avatar_url=user_metadata.get("avatar_url"),
             role="admin" if email.lower() == initial_admin_email and initial_admin_email else "member",
         )
         session.add(profile)

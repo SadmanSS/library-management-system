@@ -48,8 +48,8 @@ class BorrowingRead(BorrowingCreate):
 class RegisterRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
-    full_name: str | None = Field(default=None, max_length=255)
-    phone: str | None = Field(default=None, max_length=50)
+    full_name: str = Field(min_length=1, max_length=255)
+    phone: str = Field(min_length=3, max_length=50)
 
 
 class LoginRequest(BaseModel):
@@ -68,12 +68,14 @@ class ProfileRead(BaseModel):
     email: str
     full_name: str | None
     phone: str | None = None
+    avatar_url: str | None = None
     role: str
 
 
 class ProfileUpdate(BaseModel):
     full_name: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=50)
+    avatar_url: str | None = Field(default=None, max_length=2048)
 
 
 class RoleUpdate(BaseModel):

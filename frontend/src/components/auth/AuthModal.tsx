@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { getCurrentProfile, login, register, requestPasswordReset } from '../../services/api'
 import type { Profile, Route } from '../../types'
 import { FormField } from '../ui/FormField'
+import { handleEnterKeyNavigation, useFocusTrap } from '../../utils/formNavigation'
 import logo from '../../assets/logo.jpg'
 
 export type AuthMode = 'login' | 'register' | 'forgot-password'
@@ -29,6 +30,8 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const modalRef = useRef<HTMLDivElement>(null)
+
   // Sync mode with prop changes when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -37,6 +40,9 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
       setMessage('')
     }
   }, [isOpen, initialMode])
+
+  // Focus trap and automatic initial focus management inside the modal
+  useFocusTrap(modalRef, isOpen, mode)
 
   // Handle ESC key press to close modal
   useEffect(() => {
@@ -54,9 +60,43 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    setSaving(true)
     setError('')
     setMessage('')
+
+    if (mode === 'register') {
+      if (!fullName.trim()) {
+        setError('Full name is required.')
+        return
+      }
+      if (!phone.trim()) {
+        setError('Mobile number is required.')
+        return
+      }
+      if (!email.trim()) {
+        setError('Email address is required.')
+        return
+      }
+      if (!password) {
+        setError('Password is required.')
+        return
+      }
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters.')
+        return
+      }
+    } else if (mode === 'login') {
+      if (!email.trim() || !password) {
+        setError('Enter both email and password.')
+        return
+      }
+    } else if (mode === 'forgot-password') {
+      if (!email.trim()) {
+        setError('Enter your account email.')
+        return
+      }
+    }
+
+    setSaving(true)
     try {
       if (mode === 'forgot-password') {
         const response = await requestPasswordReset(email.trim())
@@ -64,7 +104,7 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
       } else {
         const result = mode === 'login'
           ? await login(email.trim(), password)
-          : await register(email.trim(), password, fullName.trim(), phone.trim() || undefined)
+          : await register(email.trim(), password, fullName.trim(), phone.trim())
 
         if (!result.access_token) {
           setMessage(('message' in result ? result.message : undefined) ?? 'Check your email to confirm your account, then log in.')
@@ -89,7 +129,7 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
 
   return (
     <div className="auth-modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="auth-modal-card" onClick={(event) => event.stopPropagation()}>
+      <div className="auth-modal-card" ref={modalRef} onClick={(event) => event.stopPropagation()}>
         {/* Modal Top Bar */}
         <div className="auth-modal-header">
           <div className="auth-modal-brand">
@@ -131,8 +171,8 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
           </p>
         </div>
 
-        {/* Form */}
-        <form className="auth-modal-form" onSubmit={handleSubmit}>
+        {/* Form with Enter Key Navigation */}
+        <form className="auth-modal-form" onSubmit={handleSubmit} onKeyDown={handleEnterKeyNavigation}>
           {isRegister && (
             <>
               <FormField

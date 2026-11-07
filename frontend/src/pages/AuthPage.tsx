@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { getCurrentProfile, login, register, requestPasswordReset } from '../services/api'
 import type { Profile, Route } from '../types'
 import { FormField } from '../components/ui/FormField'
+import { handleEnterKeyNavigation } from '../utils/formNavigation'
 
 type Mode = 'login' | 'register' | 'forgot-password'
 
@@ -15,16 +16,66 @@ export function AuthPage({ mode, onNavigate, onAuthenticated }: { mode: Mode; on
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const formRef = useRef<HTMLFormElement>(null)
+
+  // Focus the first input field on page load or mode switch
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!formRef.current) return
+      const firstInput = formRef.current.querySelector<HTMLInputElement>(
+        'input:not([type="hidden"]):not([disabled])'
+      )
+      firstInput?.focus()
+    }, 60)
+    return () => clearTimeout(timer)
+  }, [mode])
+
   async function submit(event: FormEvent) {
     event.preventDefault()
-    setSaving(true); setError(''); setMessage('')
+    setError('')
+    setMessage('')
+
+    if (mode === 'register') {
+      if (!fullName.trim()) {
+        setError('Full name is required.')
+        return
+      }
+      if (!phone.trim()) {
+        setError('Mobile number is required.')
+        return
+      }
+      if (!email.trim()) {
+        setError('Email address is required.')
+        return
+      }
+      if (!password) {
+        setError('Password is required.')
+        return
+      }
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters.')
+        return
+      }
+    } else if (mode === 'login') {
+      if (!email.trim() || !password) {
+        setError('Enter both email and password.')
+        return
+      }
+    } else if (mode === 'forgot-password') {
+      if (!email.trim()) {
+        setError('Enter your account email.')
+        return
+      }
+    }
+
+    setSaving(true)
     try {
       if (mode === 'forgot-password') {
-        setMessage((await requestPasswordReset(email)).message)
+        setMessage((await requestPasswordReset(email.trim())).message)
       } else {
         const result = mode === 'login'
           ? await login(email.trim(), password)
-          : await register(email.trim(), password, fullName.trim(), phone.trim() || undefined)
+          : await register(email.trim(), password, fullName.trim(), phone.trim())
         if (!result.access_token) {
           setMessage(('message' in result ? result.message : undefined) ?? 'Check your email to confirm your account, then log in.')
         } else {
@@ -107,7 +158,12 @@ export function AuthPage({ mode, onNavigate, onAuthenticated }: { mode: Mode; on
             </p>
           </div>
 
-          <form className="auth-form-v2" onSubmit={submit}>
+          <form
+            className="auth-form-v2"
+            ref={formRef}
+            onSubmit={submit}
+            onKeyDown={handleEnterKeyNavigation}
+          >
             {isRegister && (
               <>
                 <FormField label="Full name" name="full_name" value={fullName} placeholder="e.g. John Doe" onChange={setFullName} />

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { KeyboardEvent } from 'react'
 
 type Props = {
   label: string
@@ -11,7 +12,11 @@ type Props = {
   placeholder?: string
   required?: boolean
   autoComplete?: string
-  onChange: (value: string) => void
+  autoFocus?: boolean
+  readOnly?: boolean
+  disabled?: boolean
+  onChange?: (value: string) => void
+  onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void
 }
 
 function EyeIcon() {
@@ -43,16 +48,21 @@ export function FormField({
   placeholder,
   required = true,
   autoComplete,
+  autoFocus,
+  readOnly,
+  disabled,
   onChange,
+  onKeyDown,
 }: Props) {
   const [showPassword, setShowPassword] = useState(false)
   const isPassword = type === 'password'
   const computedType = isPassword ? (showPassword ? 'text' : 'password') : type
 
   return (
-    <label className="form-field">
+    <label className={`form-field ${readOnly ? 'form-field-readonly' : ''}`}>
       <span>
         {label} {required && '*'}
+        {readOnly && <span className="readonly-badge" title="Populated from your profile">🔒 Locked</span>}
       </span>
       <div className="form-input-container">
         <input
@@ -62,8 +72,13 @@ export function FormField({
           value={value}
           placeholder={placeholder}
           autoComplete={autoComplete}
-          onChange={(event) => onChange(event.target.value)}
+          autoFocus={autoFocus}
+          readOnly={readOnly}
+          disabled={disabled}
+          onChange={(event) => onChange?.(event.target.value)}
+          onKeyDown={onKeyDown}
           aria-invalid={Boolean(error)}
+          className={readOnly ? 'input-locked' : ''}
         />
         {isPassword && (
           <button

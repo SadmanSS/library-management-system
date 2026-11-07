@@ -84,9 +84,9 @@ function App() {
         : path === '/admin' && profile?.role === 'admin' ? <AdminHome onNavigate={navigate} />
       : path === '/books/add' && canManageBooks ? <AddBook onNavigate={navigate} />
         : path === '/books/edit' && canManageBooks ? <EditBook onNavigate={navigate} />
-        : path === '/profile' && profile ? <Profile profile={profile} onNavigate={navigate} onProfileUpdated={setProfile} />
-        : path === '/borrow' ? <BorrowBook onNavigate={navigate} />
-          : path === '/return' ? <ReturnBook onNavigate={navigate} />
+        : path === '/profile' && profile ? <Profile profile={profile} onNavigate={navigate} onProfileUpdated={setProfile} onLogout={handleLogout} />
+        : path === '/borrow' ? <BorrowBook onNavigate={navigate} profile={profile} />
+          : path === '/return' ? <ReturnBook onNavigate={navigate} profile={profile} />
             : path === '/admin/users' && profile?.role === 'admin' ? <Admin onNavigate={navigate} />
               : <StateMessage title="Access denied" text="Your account does not have permission to access this page." action="Go home" onAction={() => navigate('/')} />
 
