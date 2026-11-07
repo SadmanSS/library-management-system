@@ -43,3 +43,40 @@ class BorrowingRead(BorrowingCreate):
     borrowed_at: datetime
     return_date: datetime | None
     status: str
+
+
+class RegisterRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=8, max_length=128)
+    full_name: str = Field(min_length=1, max_length=255)
+    phone: str = Field(min_length=3, max_length=50)
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
+class ProfileRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    auth_user_id: str
+    email: str
+    full_name: str | None
+    phone: str | None = None
+    avatar_url: str | None = None
+    role: str
+
+
+class ProfileUpdate(BaseModel):
+    full_name: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=50)
+    avatar_url: str | None = Field(default=None, max_length=2048)
+
+
+class RoleUpdate(BaseModel):
+    role: str = Field(pattern="^(member|librarian|admin)$")

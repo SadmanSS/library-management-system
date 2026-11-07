@@ -1,4 +1,16 @@
-export type Route = '/' | '/books' | '/books/add' | '/books/edit' | '/profile' | '/borrow' | '/return'
+export type Route = '/' | '/home' | '/books' | '/books/add' | '/books/edit' | '/profile' | '/borrow' | '/return'
+  | '/login' | '/register' | '/forgot-password' | '/staff' | '/admin' | '/admin/users'
+
+export type Role = 'member' | 'librarian' | 'admin'
+
+export type Profile = {
+  auth_user_id: string
+  email: string
+  full_name: string | null
+  phone?: string | null
+  avatar_url?: string | null
+  role: Role
+}
 
 export type Book = {
   id: number

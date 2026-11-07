@@ -1,15 +1,40 @@
 from datetime import datetime, timezone
+import os
+from pathlib import Path
 
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi import Depends, HTTPException, status
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import check_database_connection, get_session
-from models import Book, Borrowing
-from schemas import BookCreate, BookRead, BorrowingCreate, BorrowingRead
-from storage import upload_cover_image
+from auth import (
+    bearer_scheme,
+    get_current_profile,
+    require_roles,
+    send_password_reset,
+    sign_in,
+    sign_out,
+    sign_up,
+)
+from models import Book, Borrowing, Profile
+from schemas import (
+    BookCreate,
+    BookRead,
+    BorrowingCreate,
+    BorrowingRead,
+    LoginRequest,
+    PasswordResetRequest,
+    ProfileRead,
+    ProfileUpdate,
+    RegisterRequest,
+    RoleUpdate,
+)
+from storage import upload_avatar_image, upload_cover_image
 
 app = FastAPI(
     title="Library Management System API",
@@ -36,8 +61,136 @@ def database_health_check():
     return {"status": "ok", "database": "connected"}
 
 
+@app.post("/api/auth/register", status_code=status.HTTP_201_CREATED)
+def register(request: RegisterRequest, session: Session = Depends(get_session)):
+    if not request.full_name or not request.full_name.strip():
+        raise HTTPException(status_code=400, detail="Full name is required.")
+    if not request.phone or not request.phone.strip():
+        raise HTTPException(status_code=400, detail="Mobile number is required.")
+    result = sign_up(request.email, request.password, request.full_name.strip(), request.phone.strip())
+    user = result.get("user") or {}
+    if user.get("id"):
+        session.add(Profile(
+            auth_user_id=user["id"],
+            email=user.get("email", request.email),
+            full_name=request.full_name,
+            phone=request.phone,
+            role=(
+                "admin"
+                if request.email.lower() == os.getenv("INITIAL_ADMIN_EMAIL", "").strip().lower()
+                and os.getenv("INITIAL_ADMIN_EMAIL", "").strip()
+                else "member"
+            ),
+        ))
+        try:
+            session.commit()
+        except IntegrityError as error:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="An account with this email already exists") from error
+    return {
+        "access_token": result.get("access_token"),
+        "refresh_token": result.get("refresh_token"),
+        "expires_in": result.get("expires_in"),
+        "user": user,
+        "message": "Registration successful. Check your email if confirmation is required.",
+    }
+
+
+@app.post("/api/auth/login")
+def login(request: LoginRequest):
+    result = sign_in(request.email, request.password)
+    return {
+        "access_token": result.get("access_token"),
+        "refresh_token": result.get("refresh_token"),
+        "expires_in": result.get("expires_in"),
+        "user": result.get("user"),
+    }
+
+
+@app.post("/api/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)):
+    if credentials:
+        sign_out(credentials.credentials)
+
+
+@app.post("/api/auth/password-reset")
+def password_reset(request: PasswordResetRequest):
+    send_password_reset(request.email)
+    return {"message": "If an account exists for that email, password reset instructions have been sent."}
+
+
+@app.get("/api/auth/me", response_model=ProfileRead)
+def current_profile(profile: Profile = Depends(get_current_profile)):
+    return profile
+
+
+@app.put("/api/auth/me", response_model=ProfileRead)
+def update_profile(
+    update: ProfileUpdate,
+    profile: Profile = Depends(get_current_profile),
+    session: Session = Depends(get_session),
+):
+    profile.full_name = update.full_name
+    if update.phone is not None:
+        profile.phone = update.phone
+    if update.avatar_url is not None:
+        profile.avatar_url = update.avatar_url
+    session.commit()
+    session.refresh(profile)
+    return profile
+
+
+@app.post("/api/auth/me/avatar", response_model=ProfileRead)
+def upload_my_avatar(
+    avatar: UploadFile = File(...),
+    profile: Profile = Depends(get_current_profile),
+    session: Session = Depends(get_session),
+):
+    contents = avatar.file.read()
+    content_type = avatar.content_type or "image/jpeg"
+    try:
+        url = upload_avatar_image(contents, content_type)
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    profile.avatar_url = url
+    session.commit()
+    session.refresh(profile)
+    return profile
+
+
+@app.get("/api/admin/users", response_model=list[ProfileRead])
+def list_users(
+    session: Session = Depends(get_session),
+    _: Profile = Depends(require_roles("admin")),
+):
+    return session.scalars(select(Profile).order_by(Profile.email)).all()
+
+
+@app.patch("/api/admin/users/{auth_user_id}/role", response_model=ProfileRead)
+def update_user_role(
+    auth_user_id: str,
+    role: RoleUpdate,
+    session: Session = Depends(get_session),
+    current: Profile = Depends(require_roles("admin")),
+):
+    if auth_user_id == current.auth_user_id:
+        raise HTTPException(status_code=400, detail="You cannot change your own role")
+    profile = session.get(Profile, auth_user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="User profile not found")
+    profile.role = role.role
+    session.commit()
+    session.refresh(profile)
+    return profile
+
+
 @app.post("/api/books", response_model=BookRead, status_code=status.HTTP_201_CREATED)
-def create_book(book: BookCreate, session: Session = Depends(get_session)):
+def create_book(
+    book: BookCreate,
+    session: Session = Depends(get_session),
+    _: Profile = Depends(require_roles("librarian", "admin")),
+):
     book_data = book.model_dump(exclude={"available_copies"})
     db_book = Book(
         **book_data,
@@ -73,6 +226,7 @@ def create_book_with_cover(
     available_copies: int | None = Form(None),
     cover: UploadFile = File(...),
     session: Session = Depends(get_session),
+    _: Profile = Depends(require_roles("librarian", "admin")),
 ):
     try:
         cover_url = upload_cover_image(cover.file.read(), cover.content_type or "")
@@ -119,7 +273,12 @@ def get_book(book_id: int, session: Session = Depends(get_session)):
 
 
 @app.put("/api/books/{book_id}", response_model=BookRead)
-def update_book(book_id: int, book: BookCreate, session: Session = Depends(get_session)):
+def update_book(
+    book_id: int,
+    book: BookCreate,
+    session: Session = Depends(get_session),
+    _: Profile = Depends(require_roles("librarian", "admin")),
+):
     db_book = session.get(Book, book_id)
     if db_book is None:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -150,6 +309,7 @@ def update_book_with_cover(
     description: str | None = Form(None),
     cover: UploadFile = File(...),
     session: Session = Depends(get_session),
+    _: Profile = Depends(require_roles("librarian", "admin")),
 ):
     db_book = session.get(Book, book_id)
     if db_book is None:
@@ -188,7 +348,11 @@ def update_book_with_cover(
 
 
 @app.delete("/api/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_book(book_id: int, session: Session = Depends(get_session)):
+def delete_book(
+    book_id: int,
+    session: Session = Depends(get_session),
+    _: Profile = Depends(require_roles("librarian", "admin")),
+):
     db_book = session.get(Book, book_id)
     if db_book is None:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -206,7 +370,11 @@ def delete_book(book_id: int, session: Session = Depends(get_session)):
 def create_borrowing(
     borrowing: BorrowingCreate,
     session: Session = Depends(get_session),
+    profile: Profile = Depends(get_current_profile),
 ):
+    user_id = profile.auth_user_id if isinstance(profile, Profile) else None
+    borrower_name = (profile.full_name or "").strip() or borrowing.borrower_name.strip()
+    borrower_contact = (profile.phone or "").strip() or (profile.email or "").strip() or borrowing.borrower_contact.strip()
     if session.in_transaction():
         session.rollback()
     with session.begin():
@@ -221,7 +389,13 @@ def create_borrowing(
             raise HTTPException(status_code=409, detail="Book is not available")
 
         book.available_copies -= 1
-        db_borrowing = Borrowing(**borrowing.model_dump())
+        db_borrowing = Borrowing(
+            book_id=borrowing.book_id,
+            borrower_name=borrower_name,
+            borrower_contact=borrower_contact,
+            due_date=borrowing.due_date,
+            user_id=user_id,
+        )
         session.add(db_borrowing)
         session.flush()
     session.refresh(db_borrowing)
@@ -229,10 +403,16 @@ def create_borrowing(
 
 
 @app.get("/api/borrowings/{borrowing_id}", response_model=BorrowingRead)
-def get_borrowing(borrowing_id: int, session: Session = Depends(get_session)):
+def get_borrowing(
+    borrowing_id: int,
+    session: Session = Depends(get_session),
+    profile: Profile = Depends(get_current_profile),
+):
     borrowing = session.get(Borrowing, borrowing_id)
     if borrowing is None:
         raise HTTPException(status_code=404, detail="Borrowing not found")
+    if isinstance(profile, Profile) and profile.role == "member" and borrowing.user_id != profile.auth_user_id:
+        raise HTTPException(status_code=403, detail="You can only access your own borrowing records")
     return borrowing
 
 
@@ -243,6 +423,7 @@ def get_borrowing(borrowing_id: int, session: Session = Depends(get_session)):
 def return_borrowing(
     borrowing_id: int,
     session: Session = Depends(get_session),
+    profile: Profile = Depends(get_current_profile),
 ):
     if session.in_transaction():
         session.rollback()
@@ -254,6 +435,8 @@ def return_borrowing(
         )
         if borrowing is None:
             raise HTTPException(status_code=404, detail="Borrowing not found")
+        if isinstance(profile, Profile) and profile.role == "member" and borrowing.user_id != profile.auth_user_id:
+            raise HTTPException(status_code=403, detail="You can only return your own borrowing records")
         if borrowing.status == "returned" or borrowing.return_date is not None:
             raise HTTPException(
                 status_code=409,
@@ -282,5 +465,27 @@ def return_borrowing(
 
 
 @app.get("/api/borrowings", response_model=list[BorrowingRead])
-def list_borrowings(session: Session = Depends(get_session)):
-    return session.scalars(select(Borrowing).order_by(Borrowing.borrowed_at.desc())).all()
+def list_borrowings(
+    session: Session = Depends(get_session),
+    profile: Profile = Depends(get_current_profile),
+):
+    query = select(Borrowing).order_by(Borrowing.borrowed_at.desc())
+    if isinstance(profile, Profile) and profile.role == "member":
+        query = query.where(Borrowing.user_id == profile.auth_user_id)
+    return session.scalars(query).all()
+
+
+# ── Production Static Assets & SPA Fallback ──
+_dist_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if (_dist_dir / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(_dist_dir / "assets")), name="static_assets")
+
+if _dist_dir.exists():
+    @app.get("/{full_path:path}")
+    def serve_spa(full_path: str):
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+        target_file = _dist_dir / full_path
+        if full_path and target_file.exists() and target_file.is_file():
+            return FileResponse(target_file)
+        return FileResponse(_dist_dir / "index.html")
