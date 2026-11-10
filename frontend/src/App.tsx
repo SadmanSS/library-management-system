@@ -9,7 +9,7 @@ import { Home } from './pages/Home'
 import { EditBook } from './pages/EditBook'
 import { Profile } from './pages/Member/Profile'
 import { ReturnBook } from './pages/Member/ReturnBook'
-import { AuthPage } from './pages/AuthPage'
+// Auth handled via Home popup
 import { Admin } from './pages/Admin/Users'
 import { StaffHome } from './pages/Stuff/Home'
 import { AdminHome } from './pages/Admin/Home'
@@ -36,6 +36,20 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [authLoading, setAuthLoading] = useState(hasAuthToken)
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('paradise_theme')
+    if (saved === 'dark' || saved === 'light') return saved
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  })
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('paradise_theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
+  }
 
   useEffect(() => {
     const handlePopState = () => setPath(getPath())
@@ -65,34 +79,34 @@ function App() {
 
   const requiresAuth = ['/', '/books', '/books/add', '/books/edit', '/profile', '/borrow', '/return', '/staff', '/admin', '/admin/users'].includes(path)
   const canManageBooks = profile?.role === 'librarian' || profile?.role === 'admin'
-  const isLandingPage = !profile && ['/home', '/login', '/register', '/forgot-password'].includes(path)
 
-  const page = path === '/home' ? <Home onNavigate={navigate} onAuthenticated={setProfile} />
+
+  const page = path === '/home' ? <Home onNavigate={navigate} onAuthenticated={setProfile} profile={profile} />
     : !profile && path === '/login' ? <Home onNavigate={navigate} onAuthenticated={setProfile} initialAuthMode="login" />
     : !profile && path === '/register' ? <Home onNavigate={navigate} onAuthenticated={setProfile} initialAuthMode="register" />
     : !profile && path === '/forgot-password' ? <Home onNavigate={navigate} onAuthenticated={setProfile} initialAuthMode="forgot-password" />
-    : path === '/' && !profile ? <Home onNavigate={navigate} onAuthenticated={setProfile} />
+    : path === '/' && !profile ? <Home onNavigate={navigate} onAuthenticated={setProfile} profile={profile} />
     : path === '/' && profile?.role === 'member' ? <MemberHome onNavigate={navigate} />
     : path === '/' && profile?.role === 'librarian' ? <StaffHome onNavigate={navigate} />
       : path === '/' && profile?.role === 'admin' ? <AdminHome onNavigate={navigate} />
-    : path === '/books' ? <BookCatalogue onNavigate={navigate} canManage={canManageBooks} />
-      : path === '/login' ? <AuthPage mode="login" onNavigate={navigate} onAuthenticated={setProfile} />
-        : path === '/register' ? <AuthPage mode="register" onNavigate={navigate} onAuthenticated={setProfile} />
-          : path === '/forgot-password' ? <AuthPage mode="forgot-password" onNavigate={navigate} onAuthenticated={setProfile} />
+    : path === '/books' ? <BookCatalogue onNavigate={navigate} canManage={canManageBooks} profile={profile} />
+      : path === '/login' || path === '/register' || path === '/forgot-password' ? <Home onNavigate={navigate} onAuthenticated={setProfile} profile={profile} />
+
+
       : !profile && requiresAuth ? <Home onNavigate={navigate} onAuthenticated={setProfile} initialAuthMode="login" />
       : path === '/staff' && profile?.role === 'librarian' ? <StaffHome onNavigate={navigate} />
         : path === '/admin' && profile?.role === 'admin' ? <AdminHome onNavigate={navigate} />
       : path === '/books/add' && canManageBooks ? <AddBook onNavigate={navigate} />
         : path === '/books/edit' && canManageBooks ? <EditBook onNavigate={navigate} />
         : path === '/profile' && profile ? <Profile profile={profile} onNavigate={navigate} onProfileUpdated={setProfile} onLogout={handleLogout} />
-        : path === '/borrow' ? <BorrowBook onNavigate={navigate} profile={profile} />
+        : path === '/borrow' && profile?.role === 'member' ? <BorrowBook onNavigate={navigate} profile={profile} />
           : path === '/return' ? <ReturnBook onNavigate={navigate} profile={profile} />
             : path === '/admin/users' && profile?.role === 'admin' ? <Admin onNavigate={navigate} />
               : <StateMessage title="Access denied" text="Your account does not have permission to access this page." action="Go home" onAction={() => navigate('/')} />
 
   return (
-    <div className="app-shell">
-      {!isLandingPage && (
+    <div className="app-shell" data-theme={theme}>
+
         <Navbar
           path={path}
           profile={profile}
@@ -100,10 +114,12 @@ function App() {
           onNavigate={navigate}
           onToggleMenu={() => setMenuOpen((open) => !open)}
           onLogout={handleLogout}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
-      )}
+
       <main>{page}</main>
-      <Footer />
+      <Footer onNavigate={navigate} />
     </div>
   )
 }

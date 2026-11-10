@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { updateProfile, uploadAvatar } from '../../services/api'
 import type { Profile as ProfileData, Route } from '../../types'
+import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
 
 type Props = {
   profile: ProfileData
@@ -32,6 +33,7 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  useBodyScrollLock(showPhotoModal || showLogoutConfirm)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const roleLabels: Record<string, { title: string; badge: string; desc: string }> = {

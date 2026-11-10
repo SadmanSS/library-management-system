@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+﻿from datetime import datetime, timezone
+import json
 import os
 from pathlib import Path
 
@@ -46,6 +47,10 @@ app = FastAPI(
 
 @app.get("/")
 def root():
+    _dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    index_file = _dist / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
     return {"message": "Library Management System API"}
 
 
@@ -59,6 +64,38 @@ def health_check():
 def database_health_check():
     check_database_connection()
     return {"status": "ok", "database": "connected"}
+
+
+_schedule_file = Path(__file__).resolve().parent / "schedule.json"
+
+DEFAULT_SCHEDULE = {
+    "regular_open": "08:30 AM",
+    "regular_close": "06:30 PM",
+    "weekly_off_days": ["Sunday"],
+    "saturday_hours": "09:00 AM – 05:00 PM",
+    "exceptions": [],
+}
+
+
+@app.get("/api/schedule")
+def get_schedule():
+    if _schedule_file.exists():
+        try:
+            with open(_schedule_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return DEFAULT_SCHEDULE
+
+
+@app.put("/api/schedule")
+def update_schedule(
+    schedule: dict,
+    profile: Profile = Depends(require_roles("admin", "librarian")),
+):
+    with open(_schedule_file, "w", encoding="utf-8") as f:
+        json.dump(schedule, f, indent=2)
+    return schedule
 
 
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED)
@@ -373,8 +410,8 @@ def create_borrowing(
     profile: Profile = Depends(get_current_profile),
 ):
     user_id = profile.auth_user_id if isinstance(profile, Profile) else None
-    borrower_name = (profile.full_name or "").strip() or borrowing.borrower_name.strip()
-    borrower_contact = (profile.phone or "").strip() or (profile.email or "").strip() or borrowing.borrower_contact.strip()
+    borrower_name = (profile.full_name or "").strip() if isinstance(profile, Profile) and profile.full_name else borrowing.borrower_name.strip()
+    borrower_contact = ((profile.phone or profile.email or "").strip() if isinstance(profile, Profile) else borrowing.borrower_contact.strip()) or borrowing.borrower_contact.strip()
     if session.in_transaction():
         session.rollback()
     with session.begin():

@@ -1,4 +1,5 @@
 import { useEffect, type KeyboardEvent, type RefObject } from 'react'
+export { useBodyScrollLock } from './useBodyScrollLock'
 
 /**
  * Enables Enter key navigation across form input fields.

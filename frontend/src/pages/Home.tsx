@@ -1,253 +1,550 @@
 import { useEffect, useState } from 'react'
-import type { Profile, Route } from '../types'
-import logo from '../assets/logo.jpg'
+import type { LibrarySchedule, Profile, Route, ScheduleException } from '../types'
 import { AuthModal, type AuthMode } from '../components/auth/AuthModal'
-
-function Counter({ target, suffix = '' }: { target: number; suffix?: string }) {
-  const [count, setCount] = useState(0)
-  useEffect(() => {
-    let frame: number
-    const duration = 2000
-    const start = performance.now()
-    function tick(now: number) {
-      const progress = Math.min((now - start) / duration, 1)
-      const eased = 1 - Math.pow(1 - progress, 3)
-      setCount(Math.floor(eased * target))
-      if (progress < 1) frame = requestAnimationFrame(tick)
-    }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  }, [target])
-  return <>{count.toLocaleString()}{suffix}</>
-}
+import { getSchedule, updateSchedule } from '../services/api'
+import { useBodyScrollLock } from '../utils/useBodyScrollLock'
+import libraryBg from '../assets/hero-bookstore.jpg'
 
 type HomeProps = {
-  onNavigate: (path: Route) => void
+  onNavigate: (path: Route, query?: string) => void
   onAuthenticated?: (profile: Profile) => void
   initialAuthMode?: AuthMode | null
+  profile?: Profile | null
 }
 
-export function Home({ onNavigate, onAuthenticated, initialAuthMode = null }: HomeProps) {
-  const [visible, setVisible] = useState(false)
+const DEFAULT_SCHEDULE: LibrarySchedule = {
+  regular_open: '08:30 AM',
+  regular_close: '06:30 PM',
+  weekly_off_days: ['Sunday'],
+  saturday_hours: '09:00 AM – 05:00 PM',
+  exceptions: [],
+}
+
+function getStoredSchedule(): LibrarySchedule {
+  try {
+    const raw = localStorage.getItem('library_schedule')
+    if (raw) return JSON.parse(raw)
+  } catch {
+    // fallback
+  }
+  return DEFAULT_SCHEDULE
+}
+
+export function Home({ onNavigate, onAuthenticated, initialAuthMode = null, profile = null }: HomeProps) {
   const [authModalMode, setAuthModalMode] = useState<AuthMode | null>(initialAuthMode)
+  const [schedule, setSchedule] = useState<LibrarySchedule>(getStoredSchedule)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [savingSchedule, setSavingSchedule] = useState(false)
+
+  // Schedule editor form states
+  const [editOpenTime, setEditOpenTime] = useState('')
+  const [editCloseTime, setEditCloseTime] = useState('')
+  const [editSaturdayHours, setEditSaturdayHours] = useState('')
+  const [editOffDay, setEditOffDay] = useState('Sunday')
+  const [exceptionsList, setExceptionsList] = useState<ScheduleException[]>([])
+
+  // New exception row states
+  const [newDate, setNewDate] = useState('')
+  const [newNote, setNewNote] = useState('')
+  const [newIsClosed, setNewIsClosed] = useState(true)
+  const [newCustomHours, setNewCustomHours] = useState('10:00 AM – 02:00 PM')
+
+  const isStaffOrAdmin = profile?.role === 'admin' || profile?.role === 'librarian'
+
+  useBodyScrollLock(showScheduleModal)
 
   useEffect(() => {
-    setVisible(true)
-  }, [])
-
-  useEffect(() => {
-    if (initialAuthMode) {
-      setAuthModalMode(initialAuthMode)
+    if (!showScheduleModal) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowScheduleModal(false)
     }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showScheduleModal])
+
+  useEffect(() => {
+    setAuthModalMode(initialAuthMode ?? null)
   }, [initialAuthMode])
 
-  const openAuth = (mode: AuthMode) => {
-    setAuthModalMode(mode)
-  }
+  useEffect(() => {
+    getSchedule()
+      .then((data) => {
+        if (data) {
+          setSchedule(data)
+          localStorage.setItem('library_schedule', JSON.stringify(data))
+        }
+      })
+      .catch(() => {
+        // use local storage schedule
+      })
+  }, [])
+
 
   const closeAuth = () => {
     setAuthModalMode(null)
-    if (window.location.pathname === '/login' || window.location.pathname === '/register' || window.location.pathname === '/forgot-password') {
-      window.history.replaceState({}, '', '/home')
+    onNavigate('/home')
+  }
+
+  // Populate editor modal
+  const openScheduleEditor = () => {
+    setEditOpenTime(schedule.regular_open || '08:30 AM')
+    setEditCloseTime(schedule.regular_close || '06:30 PM')
+    setEditSaturdayHours(schedule.saturday_hours || '09:00 AM – 05:00 PM')
+    setEditOffDay(schedule.weekly_off_days?.[0] || 'Sunday')
+    setExceptionsList(schedule.exceptions || [])
+    setShowScheduleModal(true)
+  }
+
+  const handleAddException = () => {
+    if (!newDate.trim() || !newNote.trim()) return
+    const item: ScheduleException = {
+      id: Date.now().toString(),
+      date: newDate,
+      note: newNote.trim(),
+      is_closed: newIsClosed,
+      open_time: newIsClosed ? undefined : newCustomHours.split('–')[0]?.trim(),
+      close_time: newIsClosed ? undefined : newCustomHours.split('–')[1]?.trim(),
+    }
+    setExceptionsList((prev) => [...prev, item])
+    setNewDate('')
+    setNewNote('')
+  }
+
+  const handleRemoveException = (id: string) => {
+    setExceptionsList((prev) => prev.filter((x) => x.id !== id))
+  }
+
+  const handleSaveSchedule = async () => {
+    setSavingSchedule(true)
+    const updated: LibrarySchedule = {
+      regular_open: editOpenTime.trim() || '08:30 AM',
+      regular_close: editCloseTime.trim() || '06:30 PM',
+      weekly_off_days: [editOffDay],
+      saturday_hours: editSaturdayHours.trim() || '09:00 AM – 05:00 PM',
+      exceptions: exceptionsList,
+      last_updated_by: profile?.full_name || profile?.email || 'Staff',
+      last_updated_at: new Date().toISOString(),
+    }
+
+    try {
+      await updateSchedule(updated)
+    } catch {
+      // offline or fallback
+    } finally {
+      setSchedule(updated)
+      localStorage.setItem('library_schedule', JSON.stringify(updated))
+      setSavingSchedule(false)
+      setShowScheduleModal(false)
     }
   }
 
+  // Calculate current status (Open vs Closed)
+  const now = new Date()
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  const currentDayName = days[now.getDay()]
+  const todayIso = now.toISOString().split('T')[0]
+
+  const todayException = schedule.exceptions?.find((e) => e.date === todayIso)
+  const isTodayOffDay = schedule.weekly_off_days?.includes(currentDayName)
+
+  let statusText = '🟢 Currently Open Today'
+  let statusSub = `${schedule.regular_open} – ${schedule.regular_close}`
+
+  if (todayException) {
+    if (todayException.is_closed) {
+      statusText = '🔴 Closed Today (Special Notice)'
+      statusSub = todayException.note
+    } else {
+      statusText = '🟡 Special Hours Today'
+      statusSub = `${todayException.open_time || ''} – ${todayException.close_time || ''} (${todayException.note})`
+    }
+  } else if (isTodayOffDay) {
+    statusText = `🔴 Closed Today (${currentDayName} Weekly Off)`
+    statusSub = 'Online Catalog Open 24/7'
+  } else if (currentDayName === 'Saturday') {
+    statusText = '🟢 Open Today (Saturday Schedule)'
+    statusSub = schedule.saturday_hours || '09:00 AM – 05:00 PM'
+  }
+
   return (
-    <div className="landing">
-      {/* ── Landing Header (replacing standard navbar) ── */}
-      <header className="landing-header">
-        <div className="landing-header-inner">
-          <div className="landing-brand" onClick={() => onNavigate('/home')} role="button" tabIndex={0}>
-            <img className="landing-brand-logo" src={logo} alt="Library Management System" />
-            <div className="landing-brand-name">
-              <strong>Library</strong>
-              <small>Management System</small>
-            </div>
-          </div>
-          <div className="landing-header-actions">
-            <button className="landing-header-login" onClick={() => openAuth('login')} type="button">
-              Log in
-            </button>
-            <button className="button button-primary landing-header-signup" onClick={() => openAuth('register')} type="button">
-              Get started
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* ── Hero ── */}
-      <section className={`landing-hero${visible ? ' landing-visible' : ''}`}>
-        <div className="landing-hero-bg" aria-hidden="true">
-          <div className="hero-orb hero-orb-1" />
-          <div className="hero-orb hero-orb-2" />
-          <div className="hero-orb hero-orb-3" />
-        </div>
-
-        <div className="landing-hero-inner">
-          <div className="landing-hero-content">
-            <div className="landing-brand-badge">
-              <img src={logo} alt="" className="badge-mini-logo" />
-              <span>Library Management System</span>
-            </div>
-            <h1 className="landing-headline">
-              One calm, connected<br />
-              home for your <em>library.</em>
+    <div className="paradise-landing">
+      {/* ── HERO SECTION ── */}
+      <section
+        id="hero"
+        className="paradise-hero"
+        style={{
+          backgroundImage: `var(--hero-gradient), url(${libraryBg})`,
+        }}
+      >
+        <div className="paradise-hero-container">
+          <div className="paradise-hero-content">
+            {/* Headline */}
+            <h1 className="paradise-headline">
+              Your gateway<br />
+              to <span className="highlight-gold">knowledge,</span><br />
+              inspiration<br />
+              &amp; imagination.
             </h1>
-            <p className="landing-subline">
-              Discover books, manage lending, and keep every library operation
-              organized in one secure workspace.
+
+            {/* Subtitle with System-Specific Info */}
+            <p className="paradise-subline">
+              Discover, search, and borrow from thousands of titles across diverse academic,
+              scientific, and literary collections. Easily manage reservations, track your loans,
+              and explore curated knowledge — all in one centralized library system.
             </p>
-            <div className="landing-cta">
-              <button className="button button-primary landing-btn" onClick={() => openAuth('login')} type="button">
-                Log in to dashboard
-                <span className="btn-arrow">→</span>
+
+            {/* Action Buttons */}
+            <div className="paradise-cta-group">
+              <button
+                type="button"
+                className="paradise-btn-dark"
+                onClick={() => onNavigate('/books')}
+              >
+                Show Catalog <span className="btn-arrow" aria-hidden="true">→</span>
               </button>
-              <button className="landing-btn-ghost" onClick={() => openAuth('register')} type="button">
-                Create an account →
+
+              <button
+                type="button"
+                className="paradise-btn-outline"
+                onClick={() => {
+                  document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' })
+                }}
+              >
+                <span className="btn-pin-icon" aria-hidden="true">🕒</span> Library Schedule
               </button>
             </div>
-          </div>
 
-          <div className="landing-hero-visual" aria-hidden="true">
-            <div className="floating-card fc-1">
-              <div className="fc-icon">📖</div>
-              <div>
-                <strong>Catalogue & Lending</strong>
-                <br />
-                <small>Instant search & checkout</small>
+            {/* Trust Badges */}
+            <div className="paradise-trust-badges">
+              <div className="trust-badge-item">
+                <span className="trust-icon" aria-hidden="true">📖</span>
+                <span>15,000+ Catalogued Titles</span>
+              </div>
+              <div className="trust-badge-item">
+                <span className="trust-icon" aria-hidden="true">⚡</span>
+                <span>Instant Reservations</span>
+              </div>
+              <div className="trust-badge-item">
+                <span className="trust-icon" aria-hidden="true">🔒</span>
+                <span>Secure Member Circulation</span>
               </div>
             </div>
-            <div className="floating-card fc-2">
-              <div className="fc-icon">⚡</div>
-              <div>
-                <strong>Real-time Tracking</strong>
-                <br />
-                <small>Due dates & automatic returns</small>
+          </div>
+        </div>
+
+        {/* Scroll indicator banner */}
+        <a href="#about" className="paradise-scroll-indicator">
+          <span>ABOUT OUR LIBRARY & HOURS</span>
+          <span className="scroll-arrow" aria-hidden="true">↓</span>
+        </a>
+      </section>
+
+      {/* ── ABOUT OUR LIBRARY MANAGEMENT SYSTEM & OPERATING SCHEDULE ── */}
+      <section id="about" className="paradise-about-section">
+        <div className="paradise-container">
+          {/* About System Header & Overview */}
+          <div className="about-overview-block">
+            <div className="section-title-wrap">
+              <span className="section-sub-kicker">ABOUT OUR SYSTEM</span>
+              <h2 className="section-heading-serif">A Modern Centralized Library Management System</h2>
+              <p className="section-description">
+                Designed for seamless book discovery, reservations, and circulation, our Library Management
+                System empowers patrons, researchers, and students to access comprehensive literature and
+                academic resources with speed, precision, and complete transparency.
+              </p>
+            </div>
+
+            {/* System Statistics Row */}
+            <div className="about-stats-grid">
+              <div className="about-stat-card">
+                <span className="about-stat-icon" aria-hidden="true">📚</span>
+                <div className="about-stat-info">
+                  <strong>15,000+</strong>
+                  <span>Catalogued Titles</span>
+                </div>
+              </div>
+              <div className="about-stat-card">
+                <span className="about-stat-icon" aria-hidden="true">⚡</span>
+                <div className="about-stat-info">
+                  <strong>99.8%</strong>
+                  <span>On-Time Returns</span>
+                </div>
+              </div>
+              <div className="about-stat-card">
+                <span className="about-stat-icon" aria-hidden="true">👥</span>
+                <div className="about-stat-info">
+                  <strong>5,000+</strong>
+                  <span>Active Members</span>
+                </div>
               </div>
             </div>
-            <div className="floating-card fc-3">
-              <div className="fc-icon">🛡️</div>
-              <div>
-                <strong>Role-based Security</strong>
-                <br />
-                <small>Members, Staff & Admins</small>
+          </div>
+
+          {/* Operating Schedule: In the Page (Full-Width, Integrated Flow) */}
+          <div className="page-schedule-section">
+            <div className="page-schedule-header">
+              <div className="page-schedule-title-group">
+                <span className="section-sub-kicker">PLAN YOUR VISIT &amp; BORROWING</span>
+                <h3 className="page-schedule-heading">Library Operating Schedule</h3>
+              </div>
+
+              <div className="page-schedule-controls">
+                {/* Live Status Pill */}
+                <div className="page-schedule-status-pill">
+                  <span className="schedule-status-title">{statusText}</span>
+                  <span className="schedule-status-dot">•</span>
+                  <small className="schedule-status-sub">{statusSub}</small>
+                </div>
+
+                {/* Staff & Admin Manage Pill Button */}
+                {isStaffOrAdmin && (
+                  <button
+                    type="button"
+                    className="schedule-manage-pill-btn"
+                    onClick={openScheduleEditor}
+                    title="Admin & Staff: Edit operating hours & off-days"
+                  >
+                    ⚙️ Manage Schedule &amp; Off Days
+                  </button>
+                )}
               </div>
             </div>
-            <div className="hero-book-stack">
-              <div className="stack-book sb-1" />
-              <div className="stack-book sb-2" />
-              <div className="stack-book sb-3" />
-              <div className="stack-book sb-4" />
+
+            {/* Schedule 3-Column Grid Across Page */}
+            <div className="page-schedule-grid">
+              {/* Card 1: Weekdays */}
+              <div className="schedule-day-column">
+                <div className="schedule-col-top">
+                  <span className="schedule-day-pill">WEEKDAYS</span>
+                  <span className="schedule-col-icon" aria-hidden="true">🏛️</span>
+                </div>
+                <h4 className="schedule-col-day">Monday – Friday</h4>
+                <div className="schedule-col-time">
+                  {schedule.regular_open} – {schedule.regular_close}
+                </div>
+                <p className="schedule-col-desc">
+                  Full circulation services, book issuing, reading rooms, and reference assistance.
+                </p>
+              </div>
+
+              {/* Card 2: Saturday */}
+              <div className="schedule-day-column">
+                <div className="schedule-col-top">
+                  <span className="schedule-day-pill">WEEKEND</span>
+                  <span className="schedule-col-icon" aria-hidden="true">📖</span>
+                </div>
+                <h4 className="schedule-col-day">Saturday</h4>
+                <div className="schedule-col-time">
+                  {schedule.saturday_hours || '09:00 AM – 05:00 PM'}
+                </div>
+                <p className="schedule-col-desc">
+                  Study spaces, reservation pickups, returns drop-off, and weekend reading access.
+                </p>
+              </div>
+
+              {/* Card 3: Weekly Off Day */}
+              <div className="schedule-day-column schedule-col-off">
+                <div className="schedule-col-top">
+                  <span className="schedule-day-pill pill-off">WEEKLY OFF DAY</span>
+                  <span className="schedule-col-icon" aria-hidden="true">🔒</span>
+                </div>
+                <h4 className="schedule-col-day">{schedule.weekly_off_days?.join(', ') || 'Sunday'}</h4>
+                <div className="schedule-col-time off-time">
+                  Closed for In-Person Visits
+                </div>
+                <p className="schedule-col-desc">
+                  Physical desk closed. Digital catalog search, loans tracking, and reservations remain open 24/7 online.
+                </p>
+              </div>
             </div>
+
+            {/* Special Date Exceptions Banner (if any) */}
+            {schedule.exceptions && schedule.exceptions.length > 0 && (
+              <div className="page-schedule-exceptions-row">
+                <div className="exceptions-row-header">
+                  <span className="exceptions-title">📅 Special Date Exceptions &amp; Notices:</span>
+                </div>
+                <div className="exceptions-chips-wrap">
+                  {schedule.exceptions.map((exc) => (
+                    <div key={exc.id} className="exception-chip">
+                      <strong>{exc.date}</strong>
+                      <span className="exception-chip-note">({exc.note})</span>
+                      <span className={exc.is_closed ? 'exc-closed-pill' : 'exc-open-pill'}>
+                        {exc.is_closed ? 'Closed All Day' : `${exc.open_time || ''} – ${exc.close_time || ''}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
 
-      {/* ── Stats bar ── */}
-      <section className="landing-stats">
-        <div className="landing-stats-inner">
-          <div className="stat-item">
-            <strong><Counter target={12000} suffix="+" /></strong>
-            <span>Books managed</span>
-          </div>
-          <div className="stat-divider" />
-          <div className="stat-item">
-            <strong><Counter target={3500} suffix="+" /></strong>
-            <span>Active members</span>
-          </div>
-          <div className="stat-divider" />
-          <div className="stat-item">
-            <strong><Counter target={98} suffix="%" /></strong>
-            <span>On-time returns</span>
-          </div>
-          <div className="stat-divider" />
-          <div className="stat-item">
-            <strong><Counter target={24} suffix="/7" /></strong>
-            <span>Digital access</span>
+      {/* ── SCHEDULE MANAGEMENT MODAL (ADMIN & STAFF ONLY) ── */}
+      {showScheduleModal && (
+        <div
+          className="store-modal-backdrop"
+          onClick={() => setShowScheduleModal(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="store-modal-card schedule-modal-card" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="modal-close-btn"
+              onClick={() => setShowScheduleModal(false)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+
+            <span className="modal-badge">⚙️ STAFF &amp; ADMIN CONTROLS</span>
+            <h3>Update Library Schedule &amp; Off Days</h3>
+            <p className="modal-address">
+              Adjust regular opening and closing times, change weekly off-days, or configure specific dates
+              for closures, maintenance, or extended hours.
+            </p>
+
+            {/* Form Fields */}
+            <div className="schedule-form-grid">
+              <div className="sched-form-field">
+                <label>Monday – Friday Open Time</label>
+                <input
+                  type="text"
+                  value={editOpenTime}
+                  onChange={(e) => setEditOpenTime(e.target.value)}
+                  placeholder="e.g. 08:30 AM"
+                />
+              </div>
+
+              <div className="sched-form-field">
+                <label>Monday – Friday Close Time</label>
+                <input
+                  type="text"
+                  value={editCloseTime}
+                  onChange={(e) => setEditCloseTime(e.target.value)}
+                  placeholder="e.g. 06:30 PM"
+                />
+              </div>
+
+              <div className="sched-form-field">
+                <label>Saturday Operating Hours</label>
+                <input
+                  type="text"
+                  value={editSaturdayHours}
+                  onChange={(e) => setEditSaturdayHours(e.target.value)}
+                  placeholder="e.g. 09:00 AM – 05:00 PM or Closed"
+                />
+              </div>
+
+              <div className="sched-form-field">
+                <label>Weekly Off Day</label>
+                <select
+                  value={editOffDay}
+                  onChange={(e) => setEditOffDay(e.target.value)}
+                >
+                  <option value="Sunday">Sunday</option>
+                  <option value="Saturday">Saturday</option>
+                  <option value="Friday">Friday</option>
+                  <option value="Monday">Monday</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Specific Date Exceptions Builder */}
+            <div className="modal-hours-block exceptions-builder-block">
+              <h4>📅 Specific Date Exceptions (Holidays / Special Events)</h4>
+              
+              {exceptionsList.length > 0 ? (
+                <ul className="exceptions-edit-list">
+                  {exceptionsList.map((exc) => (
+                    <li key={exc.id} className="exception-item-row">
+                      <div>
+                        <strong>{exc.date}</strong> — {exc.note}
+                        <span className="exc-tag">
+                          {exc.is_closed ? 'Closed all day' : `${exc.open_time} – ${exc.close_time}`}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="exception-delete-btn"
+                        onClick={() => handleRemoveException(exc.id)}
+                        title="Delete exception"
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="no-exceptions-hint">No specific date exceptions currently scheduled.</p>
+              )}
+
+              {/* Add Exception Row */}
+              <div className="add-exception-card">
+                <strong>+ Add Specific Date Exception</strong>
+                <div className="add-exception-inputs">
+                  <input
+                    type="date"
+                    value={newDate}
+                    onChange={(e) => setNewDate(e.target.value)}
+                    title="Exception date"
+                  />
+                  <input
+                    type="text"
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Occasion / Reason (e.g. National Holiday)"
+                  />
+                  <label className="exc-closed-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={newIsClosed}
+                      onChange={(e) => setNewIsClosed(e.target.checked)}
+                    />
+                    <span>Closed all day</span>
+                  </label>
+                  {!newIsClosed && (
+                    <input
+                      type="text"
+                      value={newCustomHours}
+                      onChange={(e) => setNewCustomHours(e.target.value)}
+                      placeholder="e.g. 10:00 AM – 02:00 PM"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    className="add-exc-action-btn"
+                    onClick={handleAddException}
+                  >
+                    Add Date
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="modal-btn-primary"
+              onClick={handleSaveSchedule}
+              disabled={savingSchedule}
+            >
+              {savingSchedule ? 'Saving Changes...' : 'Save Schedule Changes'}
+            </button>
           </div>
         </div>
-      </section>
+      )}
 
-      {/* ── Features ── */}
-      <section className="landing-features">
-        <div className="landing-features-inner">
-          <p className="section-kicker">EVERYTHING YOU NEED</p>
-          <h2 className="landing-section-title">Powerful features,<br />effortless experience.</h2>
-          <p className="landing-section-sub">Built for every role in your library — members, librarians, and administrators.</p>
-
-          <div className="feature-cards">
-            <div className="f-card">
-              <div className="f-card-icon">🔍</div>
-              <h3>Smart catalogue</h3>
-              <p>Browse, search, and filter your entire book collection with real-time availability tracking.</p>
-            </div>
-            <div className="f-card">
-              <div className="f-card-icon">📋</div>
-              <h3>Effortless lending</h3>
-              <p>Borrow and return books in seconds. Track due dates and get reminders automatically.</p>
-            </div>
-            <div className="f-card">
-              <div className="f-card-icon">🛡️</div>
-              <h3>Role-based access</h3>
-              <p>Secure, backend-enforced permissions for members, librarians, and administrators.</p>
-            </div>
-            <div className="f-card">
-              <div className="f-card-icon">📊</div>
-              <h3>Dashboard insights</h3>
-              <p>Each role gets a tailored dashboard with the tools and data they need most.</p>
-            </div>
-            <div className="f-card">
-              <div className="f-card-icon">🖼️</div>
-              <h3>Book covers</h3>
-              <p>Upload and manage cover images with cloud storage — your catalogue looks gorgeous.</p>
-            </div>
-            <div className="f-card">
-              <div className="f-card-icon">⚡</div>
-              <h3>Lightning fast</h3>
-              <p>Modern React frontend with instant navigation and zero page reloads.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Roles showcase ── */}
-      <section className="landing-roles">
-        <div className="landing-roles-inner">
-          <p className="section-kicker">DESIGNED FOR EVERY ROLE</p>
-          <h2 className="landing-section-title">One platform,<br />three experiences.</h2>
-
-          <div className="role-cards">
-            <div className="role-card role-member">
-              <div className="role-number">01</div>
-              <div className="role-badge-label">Members</div>
-              <h3>Discover & borrow</h3>
-              <p>Browse the catalogue, borrow available books, track due dates, and manage your reading list — all from a personal dashboard.</p>
-              <button className="role-link" onClick={() => openAuth('register')} type="button">Join as a member →</button>
-            </div>
-            <div className="role-card role-staff">
-              <div className="role-number">02</div>
-              <div className="role-badge-label">Librarians</div>
-              <h3>Manage & organize</h3>
-              <p>Add books, upload covers, handle borrowing and returns, and keep your library inventory accurate and up to date.</p>
-              <button className="role-link" onClick={() => openAuth('login')} type="button">Staff sign in →</button>
-            </div>
-            <div className="role-card role-admin">
-              <div className="role-number">03</div>
-              <div className="role-badge-label">Administrators</div>
-              <h3>Control & configure</h3>
-              <p>Manage user accounts and roles, oversee all operations, and maintain security with full administrative control.</p>
-              <button className="role-link" onClick={() => openAuth('login')} type="button">Admin sign in →</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Auth Modal Popup ── */}
+      {/* ── AUTH MODAL ── */}
       <AuthModal
         isOpen={authModalMode !== null}
         initialMode={authModalMode || 'login'}
         onClose={closeAuth}
-        onAuthenticated={onAuthenticated || (() => {})}
+        onAuthenticated={(p) => {
+          onAuthenticated?.(p)
+          closeAuth()
+        }}
         onNavigate={onNavigate}
       />
     </div>
