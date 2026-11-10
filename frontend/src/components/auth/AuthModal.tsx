@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { getCurrentProfile, login, register, requestPasswordReset } from '../../services/api'
 import type { Profile, Route } from '../../types'
 import { FormField } from '../ui/FormField'
-import { handleEnterKeyNavigation, useFocusTrap } from '../../utils/formNavigation'
+import { handleEnterKeyNavigation, useBodyScrollLock, useFocusTrap } from '../../utils/formNavigation'
 import logo from '../../assets/logo.jpg'
 
 export type AuthMode = 'login' | 'register' | 'forgot-password'
@@ -43,6 +43,9 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
 
   // Focus trap and automatic initial focus management inside the modal
   useFocusTrap(modalRef, isOpen, mode)
+
+  // Prevent background scroll when modal is open
+  useBodyScrollLock(isOpen)
 
   // Handle ESC key press to close modal
   useEffect(() => {
@@ -226,7 +229,7 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
             ) : isForgot ? (
               'Send recovery link'
             ) : isLogin ? (
-              'Sign In to Dashboard'
+              'Sign In'
             ) : (
               'Create Account'
             )}

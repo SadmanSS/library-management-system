@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import type { FormEvent } from 'react'
 import { getBorrowings, getBorrowing, returnBorrowing, getBooks } from '../../services/api'
 import type { Borrowing, Book, Profile, Route } from '../../types'
+import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
 
 type Props = {
   onNavigate: (path: Route, query?: string) => void
@@ -110,6 +111,19 @@ export function ReturnBook({ onNavigate: _onNavigate, profile }: Props) {
 
   // Selected Transaction for Modal
   const [selectedBorrowing, setSelectedBorrowing] = useState<Borrowing | null>(null)
+
+  // Prevent background scroll when transaction modal is open
+  useBodyScrollLock(Boolean(selectedBorrowing))
+
+  // Close modal on Escape
+  useEffect(() => {
+    if (!selectedBorrowing) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedBorrowing(null)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedBorrowing])
   const [returningId, setReturningId] = useState<number | null>(null)
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)

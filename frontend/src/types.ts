@@ -1,4 +1,4 @@
-export type Route = '/' | '/home' | '/books' | '/books/add' | '/books/edit' | '/profile' | '/borrow' | '/return'
+﻿export type Route = '/' | '/home' | '/categories' | '/books' | '/books/add' | '/books/edit' | '/profile' | '/borrow' | '/return'
   | '/login' | '/register' | '/forgot-password' | '/staff' | '/admin' | '/admin/users'
 
 export type Role = 'member' | 'librarian' | 'admin'
@@ -48,3 +48,22 @@ export type BookInput = {
 }
 
 export type BookWithCoverInput = BookInput & { cover: File }
+
+export type ScheduleException = {
+  id: string
+  date: string // "YYYY-MM-DD"
+  note: string
+  is_closed: boolean
+  open_time?: string
+  close_time?: string
+}
+
+export type LibrarySchedule = {
+  regular_open: string
+  regular_close: string
+  weekly_off_days: string[]
+  saturday_hours?: string
+  exceptions: ScheduleException[]
+  last_updated_by?: string
+  last_updated_at?: string
+}
