@@ -71,10 +71,10 @@ export const register = (email: string, password: string, full_name: string, pho
     body: JSON.stringify({ email, password, full_name, phone }),
   })
 export const logout = () => request<void>('/auth/logout', { method: 'POST' })
-export const requestPasswordReset = (email: string) =>
+export const requestPasswordReset = (email: string, redirectTo?: string) =>
   request<{ message: string }>('/auth/password-reset', {
     method: 'POST',
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, redirect_to: redirectTo }),
   })
 export const updateProfile = (full_name: string, phone?: string, avatar_url?: string | null) =>
   request<Profile>('/auth/me', {
