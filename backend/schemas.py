@@ -59,6 +59,7 @@ class LoginRequest(BaseModel):
 
 class PasswordResetRequest(BaseModel):
     email: str
+    redirect_to: str | None = None
 
 
 class ProfileRead(BaseModel):

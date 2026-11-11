@@ -152,7 +152,7 @@ def logout(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_sch
 
 @app.post("/api/auth/password-reset")
 def password_reset(request: PasswordResetRequest):
-    send_password_reset(request.email)
+    send_password_reset(request.email, redirect_to=request.redirect_to)
     return {"message": "If an account exists for that email, password reset instructions have been sent."}
 
 

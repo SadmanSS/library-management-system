@@ -3,6 +3,7 @@ import type { LibrarySchedule, Profile, Route, ScheduleException } from '../type
 import { AuthModal, type AuthMode } from '../components/auth/AuthModal'
 import { getSchedule, updateSchedule } from '../services/api'
 import { useBodyScrollLock } from '../utils/useBodyScrollLock'
+import { supabase, isPasswordRecoveryUrl } from '../services/supabase'
 import libraryBg from '../assets/hero-bookstore.jpg'
 
 type HomeProps = {
@@ -66,6 +67,25 @@ export function Home({ onNavigate, onAuthenticated, initialAuthMode = null, prof
     setAuthModalMode(initialAuthMode ?? null)
   }, [initialAuthMode])
 
+  // Listen for Supabase password recovery event & URL detection
+  useEffect(() => {
+    // 1. Check if the URL contains type=recovery or recovery token on mount
+    if (isPasswordRecoveryUrl()) {
+      setAuthModalMode('set-new-password')
+    }
+
+    // 2. Listen for Supabase PASSWORD_RECOVERY event
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setAuthModalMode('set-new-password')
+      }
+    })
+
+    return () => {
+      authListener?.subscription?.unsubscribe()
+    }
+  }, [])
+
   useEffect(() => {
     getSchedule()
       .then((data) => {
@@ -82,6 +102,9 @@ export function Home({ onNavigate, onAuthenticated, initialAuthMode = null, prof
 
   const closeAuth = () => {
     setAuthModalMode(null)
+    if (isPasswordRecoveryUrl() && typeof window !== 'undefined' && window.history?.replaceState) {
+      window.history.replaceState(null, document.title, window.location.pathname)
+    }
     onNavigate('/home')
   }
 

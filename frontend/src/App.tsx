@@ -15,12 +15,14 @@ import { StaffHome } from './pages/Stuff/Home'
 import { AdminHome } from './pages/Admin/Home'
 import { MemberHome } from './pages/Member/Home'
 import { getCurrentProfile, hasAuthToken, logout } from './services/api'
+import { supabase, isPasswordRecoveryUrl } from './services/supabase'
 import type { Profile as ProfileData, Route } from './types'
 import { StateMessage } from './components/ui/StateMessage'
 
-const paths: Route[] = ['/', '/home', '/books', '/books/add', '/books/edit', '/profile', '/borrow', '/return', '/login', '/register', '/forgot-password', '/staff', '/admin', '/admin/users']
+const paths: Route[] = ['/', '/home', '/books', '/books/add', '/books/edit', '/profile', '/borrow', '/return', '/login', '/register', '/forgot-password', '/reset-password', '/staff', '/admin', '/admin/users']
 
 function getPath(): Route {
+  if (isPasswordRecoveryUrl()) return '/home'
   const path = window.location.pathname as Route
   if (path === '/' && !hasAuthToken()) return '/home'
   return paths.includes(path) ? path : '/'
@@ -58,6 +60,20 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (isPasswordRecoveryUrl()) {
+      navigate('/home')
+    }
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        navigate('/home')
+      }
+    })
+    return () => {
+      authListener?.subscription?.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
     if (!hasAuthToken()) {
       return
     }
@@ -66,6 +82,7 @@ function App() {
       setProfile(null)
     }).finally(() => setAuthLoading(false))
   }, [])
+
 
   const handleLogout = async () => {
     try { await logout() } finally {
@@ -85,12 +102,13 @@ function App() {
     : !profile && path === '/login' ? <Home onNavigate={navigate} onAuthenticated={setProfile} initialAuthMode="login" />
     : !profile && path === '/register' ? <Home onNavigate={navigate} onAuthenticated={setProfile} initialAuthMode="register" />
     : !profile && path === '/forgot-password' ? <Home onNavigate={navigate} onAuthenticated={setProfile} initialAuthMode="forgot-password" />
+    : !profile && path === '/reset-password' ? <Home onNavigate={navigate} onAuthenticated={setProfile} initialAuthMode="set-new-password" />
     : path === '/' && !profile ? <Home onNavigate={navigate} onAuthenticated={setProfile} profile={profile} />
     : path === '/' && profile?.role === 'member' ? <MemberHome onNavigate={navigate} />
     : path === '/' && profile?.role === 'librarian' ? <StaffHome onNavigate={navigate} />
       : path === '/' && profile?.role === 'admin' ? <AdminHome onNavigate={navigate} />
     : path === '/books' ? <BookCatalogue onNavigate={navigate} canManage={canManageBooks} profile={profile} />
-      : path === '/login' || path === '/register' || path === '/forgot-password' ? <Home onNavigate={navigate} onAuthenticated={setProfile} profile={profile} />
+      : path === '/login' || path === '/register' || path === '/forgot-password' || path === '/reset-password' ? <Home onNavigate={navigate} onAuthenticated={setProfile} profile={profile} />
 
 
       : !profile && requiresAuth ? <Home onNavigate={navigate} onAuthenticated={setProfile} initialAuthMode="login" />

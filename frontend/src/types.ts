@@ -1,5 +1,5 @@
 ﻿export type Route = '/' | '/home' | '/categories' | '/books' | '/books/add' | '/books/edit' | '/profile' | '/borrow' | '/return'
-  | '/login' | '/register' | '/forgot-password' | '/staff' | '/admin' | '/admin/users'
+  | '/login' | '/register' | '/forgot-password' | '/reset-password' | '/staff' | '/admin' | '/admin/users'
 
 export type Role = 'member' | 'librarian' | 'admin'
 

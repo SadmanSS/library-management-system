@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { getCurrentProfile, login, register, requestPasswordReset } from '../../services/api'
+import { supabase, getRecoveryTokenFromUrl } from '../../services/supabase'
 import type { Profile, Route } from '../../types'
 import { FormField } from '../ui/FormField'
 import { handleEnterKeyNavigation, useBodyScrollLock, useFocusTrap } from '../../utils/formNavigation'
 import logo from '../../assets/logo.jpg'
 
-export type AuthMode = 'login' | 'register' | 'forgot-password'
+export type AuthMode = 'login' | 'register' | 'forgot-password' | 'set-new-password'
 
 type Props = {
   isOpen: boolean
@@ -24,6 +25,8 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
   const [mode, setMode] = useState<AuthMode>(initialMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [error, setError] = useState('')
@@ -38,6 +41,8 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
       setMode(initialMode)
       setError('')
       setMessage('')
+      setNewPassword('')
+      setConfirmPassword('')
     }
   }, [isOpen, initialMode])
 
@@ -97,13 +102,70 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
         setError('Enter your account email.')
         return
       }
+    } else if (mode === 'set-new-password') {
+      if (!newPassword) {
+        setError('Please enter a new password.')
+        return
+      }
+      if (newPassword.length < 8) {
+        setError('Password must be at least 8 characters.')
+        return
+      }
+      if (newPassword !== confirmPassword) {
+        setError('Passwords do not match.')
+        return
+      }
     }
 
     setSaving(true)
     try {
       if (mode === 'forgot-password') {
-        const response = await requestPasswordReset(email.trim())
-        setMessage(response.message)
+        // Requirement 1: call supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin })
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: window.location.origin,
+        })
+
+        if (resetError) {
+          // Fallback through backend API to ensure reset email is delivered
+          const response = await requestPasswordReset(email.trim(), window.location.origin)
+          setMessage(response.message)
+        } else {
+          setMessage('If an account exists for that email, password reset instructions have been sent.')
+        }
+      } else if (mode === 'set-new-password') {
+        // Ensure session tokens from URL hash are registered if available
+        const { access_token, refresh_token } = getRecoveryTokenFromUrl()
+        if (access_token) {
+          await supabase.auth.setSession({
+            access_token,
+            refresh_token: refresh_token || '',
+          }).catch(() => {})
+        }
+
+        // Requirement 4: call supabase.auth.updateUser({ password: newPassword })
+        const { error: updateError } = await supabase.auth.updateUser({
+          password: newPassword,
+        })
+
+        if (updateError) {
+          throw updateError
+        }
+
+        // Show success message and clear fields
+        setMessage('Your password has been successfully updated! You can now sign in.')
+        setError('')
+        setNewPassword('')
+        setConfirmPassword('')
+
+        // Clear recovery URL hash and params
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState(null, document.title, window.location.pathname)
+        }
+
+        // Switch back to Login view
+        setTimeout(() => {
+          setMode('login')
+        }, 1600)
       } else {
         const result = mode === 'login'
           ? await login(email.trim(), password)
@@ -129,6 +191,7 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
   const isForgot = mode === 'forgot-password'
   const isLogin = mode === 'login'
   const isRegister = mode === 'register'
+  const isSetNewPassword = mode === 'set-new-password'
 
   return (
     <div className="auth-modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
@@ -147,8 +210,8 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
           </button>
         </div>
 
-        {/* Back to sign in button (only shown in forgot-password mode) */}
-        {isForgot && (
+        {/* Back to sign in button (shown in forgot-password or set-new-password mode) */}
+        {(isForgot || isSetNewPassword) && (
           <div className="auth-modal-back-row">
             <button
               type="button"
@@ -166,11 +229,13 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
             {isLogin && 'Welcome back'}
             {isRegister && 'Create your account'}
             {isForgot && 'Reset your password'}
+            {isSetNewPassword && 'Set new password'}
           </h2>
           <p>
             {isLogin && 'Enter your credentials to access your library workspace.'}
             {isRegister && 'Join the library to start browsing and borrowing books.'}
             {isForgot && 'Enter your account email to receive reset instructions.'}
+            {isSetNewPassword && 'Enter your new password below to secure your account.'}
           </p>
         </div>
 
@@ -197,24 +262,48 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
             </>
           )}
 
-          <FormField
-            label="Email address"
-            name="email"
-            type="email"
-            value={email}
-            placeholder="you@example.com"
-            onChange={setEmail}
-          />
+          {isSetNewPassword ? (
+            <>
+              <FormField
+                label="New password"
+                name="new_password"
+                type="password"
+                value={newPassword}
+                placeholder="At least 8 characters"
+                hint="Must be at least 8 characters long."
+                onChange={setNewPassword}
+              />
+              <FormField
+                label="Confirm new password"
+                name="confirm_password"
+                type="password"
+                value={confirmPassword}
+                placeholder="Re-enter your new password"
+                onChange={setConfirmPassword}
+              />
+            </>
+          ) : (
+            <>
+              <FormField
+                label="Email address"
+                name="email"
+                type="email"
+                value={email}
+                placeholder="you@example.com"
+                onChange={setEmail}
+              />
 
-          {!isForgot && (
-            <FormField
-              label="Password"
-              name="password"
-              type="password"
-              value={password}
-              hint={isRegister ? 'At least 8 characters.' : undefined}
-              onChange={setPassword}
-            />
+              {!isForgot && (
+                <FormField
+                  label="Password"
+                  name="password"
+                  type="password"
+                  value={password}
+                  hint={isRegister ? 'At least 8 characters.' : undefined}
+                  onChange={setPassword}
+                />
+              )}
+            </>
           )}
 
           {error && <p className="form-error auth-modal-error" role="alert">{error}</p>}
@@ -226,6 +315,8 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
                 <span className="loading-spinner loading-spinner-sm" aria-hidden="true" />
                 <span>Please wait...</span>
               </>
+            ) : isSetNewPassword ? (
+              'Save New Password'
             ) : isForgot ? (
               'Send recovery link'
             ) : isLogin ? (
@@ -272,7 +363,7 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
             </>
           )}
 
-          {isForgot && (
+          {(isForgot || isSetNewPassword) && (
             <>
               <span className="auth-footer-text">Remember your password?</span>
               <button

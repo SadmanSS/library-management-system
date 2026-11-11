@@ -69,8 +69,9 @@ def sign_out(token: str) -> None:
     _supabase_request("logout", method="POST", token=token)
 
 
-def send_password_reset(email: str) -> None:
-    _supabase_request("recover", method="POST", payload={"email": email})
+def send_password_reset(email: str, redirect_to: str | None = None) -> None:
+    path = f"recover?redirect_to={redirect_to}" if redirect_to else "recover"
+    _supabase_request(path, method="POST", payload={"email": email})
 
 
 def get_supabase_user(token: str) -> dict:
