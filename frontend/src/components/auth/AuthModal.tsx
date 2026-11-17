@@ -38,6 +38,7 @@ export function AuthModal({ isOpen, initialMode = 'login', onClose, onAuthentica
   // Sync mode with prop changes when modal opens
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode(initialMode)
       setError('')
       setMessage('')

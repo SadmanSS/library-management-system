@@ -1,15 +1,20 @@
-import type { Book, BookInput, BookWithCoverInput, Borrowing, LibrarySchedule, Profile, Role } from '../types'
+import type { Book, BookInput, BookWithCoverInput, Borrowing, LibrarySchedule, Profile, Role, UserSession } from '../types'
+import { getClientDeviceInfo } from '../utils/deviceDetection'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData
   const token = typeof window !== 'undefined' ? window.localStorage.getItem('lms_access_token') : null
   const { headers: customHeaders, ...restInit } = init ?? {}
+  const deviceInfo = getClientDeviceInfo()
 
   const response = await fetch(`/api${path}`, {
     ...restInit,
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'X-Device-Type': deviceInfo.device_type,
+      'X-Device-Browser': deviceInfo.browser,
+      'X-Device-OS': deviceInfo.os,
       ...customHeaders,
     },
   })
@@ -70,7 +75,9 @@ export const register = (email: string, password: string, full_name: string, pho
     method: 'POST',
     body: JSON.stringify({ email, password, full_name, phone }),
   })
-export const logout = () => request<void>('/auth/logout', { method: 'POST' })
+export const logout = (scope: 'local' | 'others' | 'global' = 'local') =>
+  request<{ message: string; scope: string }>(`/auth/logout?scope=${scope}`, { method: 'POST' })
+export const getUserSessions = () => request<UserSession[]>('/auth/me/sessions')
 export const requestPasswordReset = (email: string, redirectTo?: string) =>
   request<{ message: string }>('/auth/password-reset', {
     method: 'POST',
@@ -94,6 +101,7 @@ export const uploadAvatar = async (file: File) => {
     body: form,
   })
 }
+export const deleteAvatar = () => request<Profile>('/auth/me/avatar', { method: 'DELETE' })
 
 export const getUsers = () => request<Profile[]>('/admin/users')
 export const updateUserRole = (authUserId: string, role: Role) =>

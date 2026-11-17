@@ -21,7 +21,13 @@ export function BookGrid({
   viewMode = 'grid',
 }: BookGridProps) {
   return (
-    <div className={viewMode === 'list' ? 'catalog-list-container' : 'catalog-grid-container catalogue-grid-container'}>
+    <div
+      className={
+        viewMode === 'list'
+          ? 'editorial-list-container catalog-list-container'
+          : 'editorial-grid-container catalog-grid-container catalogue-grid-container'
+      }
+    >
       {books.map((book) => (
         <BookCard
           key={book.id}

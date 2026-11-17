@@ -4,10 +4,16 @@ const supabaseUrl =
   import.meta.env.VITE_SUPABASE_URL ||
   import.meta.env.SUPABASE_URL ||
   'https://sigfhadnudkminxlkvhh.supabase.co'
+const rawAnonKey =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ||
+  (import.meta.env.SUPABASE_ANON_KEY as string | undefined) ||
+  ''
+
+// Ensure secret service role keys (starting with 'sb_secret_') are never passed to the browser Supabase client
 const supabaseAnonKey =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  import.meta.env.SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder'
+  rawAnonKey && !rawAnonKey.startsWith('sb_secret_')
+    ? rawAnonKey
+    : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder'
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

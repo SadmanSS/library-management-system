@@ -1,14 +1,15 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
+import base64
 import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi import Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPAuthorizationCredentials
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,7 @@ from database import check_database_connection, get_session
 from auth import (
     bearer_scheme,
     get_current_profile,
+    get_supabase_user,
     require_roles,
     send_password_reset,
     sign_in,
@@ -34,6 +36,7 @@ from schemas import (
     ProfileUpdate,
     RegisterRequest,
     RoleUpdate,
+    UserSession,
 )
 from storage import upload_avatar_image, upload_cover_image
 
@@ -134,8 +137,30 @@ def register(request: RegisterRequest, session: Session = Depends(get_session)):
 
 
 @app.post("/api/auth/login")
-def login(request: LoginRequest):
+def login(request: LoginRequest, req: Request, session: Session = Depends(get_session)):
+    client_ua = (
+        req.headers.get("x-device-user-agent")
+        or req.headers.get("user-agent")
+    )
+    client_ip = (
+        req.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or (req.client.host if req.client else None)
+    )
+
     result = sign_in(request.email, request.password)
+    token = result.get("access_token")
+    sid = get_session_id_from_token(token)
+
+    if sid and client_ua:
+        try:
+            session.execute(
+                text("UPDATE auth.sessions SET user_agent = :ua, ip = :ip WHERE id = :sid"),
+                {"ua": client_ua, "ip": client_ip, "sid": sid},
+            )
+            session.commit()
+        except Exception:
+            pass
+
     return {
         "access_token": result.get("access_token"),
         "refresh_token": result.get("refresh_token"),
@@ -144,10 +169,132 @@ def login(request: LoginRequest):
     }
 
 
-@app.post("/api/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)):
-    if credentials:
-        sign_out(credentials.credentials)
+def get_session_id_from_token(token: str | None) -> str | None:
+    if not token:
+        return None
+    try:
+        parts = token.split(".")
+        if len(parts) >= 2:
+            padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+            payload_bytes = base64.urlsafe_b64decode(padded)
+            payload = json.loads(payload_bytes)
+            return payload.get("session_id")
+    except Exception:
+        pass
+    return None
+
+
+def parse_user_agent(ua_str: str | None) -> dict[str, str]:
+    if not ua_str:
+        return {
+            "device_type": "Laptop",
+            "browser": "Web Browser",
+            "os": "Desktop",
+            "device_name": "Laptop • Web Browser",
+        }
+
+    ua = ua_str.lower()
+
+    # 1. Device Type & OS detection
+    is_mobile = any(x in ua for x in ("mobile", "mobi", "iphone", "ipod", "android", "phone"))
+    is_tablet = any(x in ua for x in ("ipad", "tablet")) or ("android" in ua and "mobile" not in ua)
+
+    if "iphone" in ua or "ipod" in ua:
+        os_name = "iOS"
+        dev_type = "Phone"
+    elif "ipad" in ua:
+        os_name = "iPadOS"
+        dev_type = "Tablet"
+    elif "android" in ua:
+        os_name = "Android"
+        dev_type = "Tablet" if is_tablet else "Phone"
+    elif "windows" in ua:
+        os_name = "Windows"
+        dev_type = "Laptop" if ("touch" in ua or "portable" in ua or "notebook" in ua) else "Desktop / Laptop"
+    elif "macintosh" in ua or "mac os" in ua:
+        os_name = "macOS"
+        dev_type = "Laptop"
+    elif "linux" in ua and not is_mobile:
+        os_name = "Linux"
+        dev_type = "Desktop"
+    else:
+        os_name = "Desktop"
+        dev_type = "Phone" if is_mobile else "Laptop"
+
+    # 2. Browser detection
+    if "edg/" in ua or "edge/" in ua:
+        browser_name = "Microsoft Edge"
+    elif "opr/" in ua or "opera" in ua:
+        browser_name = "Opera"
+    elif "brave" in ua:
+        browser_name = "Brave"
+    elif "crios" in ua:
+        browser_name = "Google Chrome"
+    elif "fxios" in ua:
+        browser_name = "Mozilla Firefox"
+    elif "chrome" in ua and "safari" in ua:
+        browser_name = "Google Chrome"
+    elif "firefox" in ua:
+        browser_name = "Mozilla Firefox"
+    elif "safari" in ua and "chrome" not in ua:
+        browser_name = "Apple Safari"
+    elif "python" in ua:
+        browser_name = "Web Browser"
+        dev_type = "Laptop / Desktop"
+    else:
+        browser_name = "Web Browser"
+
+    device_name = f"{dev_type} • {browser_name}"
+    return {
+        "device_type": dev_type,
+        "browser": browser_name,
+        "os": os_name,
+        "device_name": device_name,
+    }
+
+
+@app.post("/api/auth/logout")
+def logout(
+    scope: str = Query(default="local"),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    session: Session = Depends(get_session),
+):
+    token = credentials.credentials if credentials else None
+    current_session_id = get_session_id_from_token(token)
+
+    if token:
+        try:
+            sign_out(token, scope=scope)
+        except Exception:
+            pass
+
+    if token and scope in ("others", "global"):
+        try:
+            user = get_supabase_user(token)
+            auth_user_id = user.get("id")
+            if auth_user_id:
+                if scope == "others" and current_session_id:
+                    session.execute(
+                        text("DELETE FROM auth.sessions WHERE user_id = :uid AND id != :sid"),
+                        {"uid": auth_user_id, "sid": current_session_id},
+                    )
+                    session.commit()
+                elif scope == "global":
+                    session.execute(
+                        text("DELETE FROM auth.sessions WHERE user_id = :uid"),
+                        {"uid": auth_user_id},
+                    )
+                    session.commit()
+        except Exception:
+            pass
+    elif token and scope == "local" and current_session_id:
+        try:
+            session.execute(text("DELETE FROM auth.sessions WHERE id = :sid"), {"sid": current_session_id})
+            session.commit()
+        except Exception:
+            pass
+
+    return {"message": "Logged out successfully", "scope": scope}
 
 
 @app.post("/api/auth/password-reset")
@@ -170,11 +317,130 @@ def update_profile(
     profile.full_name = update.full_name
     if update.phone is not None:
         profile.phone = update.phone
-    if update.avatar_url is not None:
-        profile.avatar_url = update.avatar_url
+    if "avatar_url" in update.model_fields_set:
+        profile.avatar_url = update.avatar_url if update.avatar_url else None
     session.commit()
     session.refresh(profile)
     return profile
+
+
+@app.delete("/api/auth/me/avatar", response_model=ProfileRead)
+def delete_my_avatar(
+    profile: Profile = Depends(get_current_profile),
+    session: Session = Depends(get_session),
+):
+    profile.avatar_url = None
+    session.commit()
+    session.refresh(profile)
+    return profile
+
+
+@app.get("/api/auth/me/sessions", response_model=list[UserSession])
+def list_user_sessions(
+    request: Request,
+    profile: Profile = Depends(get_current_profile),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    session: Session = Depends(get_session),
+):
+    token = credentials.credentials if credentials else None
+    current_session_id = get_session_id_from_token(token)
+
+    req_ua = request.headers.get("user-agent") or ""
+    client_ip = (
+        request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or (request.client.host if request.client else None)
+    )
+    client_hint_type = request.headers.get("x-device-type")
+    client_hint_browser = request.headers.get("x-device-browser")
+    client_hint_os = request.headers.get("x-device-os")
+
+    if current_session_id and req_ua:
+        try:
+            session.execute(
+                text("UPDATE auth.sessions SET user_agent = :ua, ip = :ip WHERE id = :sid"),
+                {"ua": req_ua, "ip": client_ip, "sid": current_session_id},
+            )
+            session.commit()
+        except Exception:
+            pass
+
+    sessions_list: list[UserSession] = []
+
+    try:
+        query = text(
+            """
+            SELECT id, user_id, created_at, updated_at, user_agent, ip
+            FROM auth.sessions
+            WHERE user_id = :user_id
+            ORDER BY updated_at DESC
+            """
+        )
+        rows = session.execute(query, {"user_id": profile.auth_user_id}).fetchall()
+        for row in rows:
+            sid = str(row[0])
+            created_at = row[2]
+            updated_at = row[3]
+            ua = row[4]
+            ip_val = str(row[5]) if row[5] is not None else None
+
+            is_current = bool(current_session_id and sid == current_session_id)
+
+            if is_current:
+                parsed = parse_user_agent(req_ua)
+                device_type = client_hint_type or parsed["device_type"]
+                browser = client_hint_browser or parsed["browser"]
+                os_name = client_hint_os or parsed["os"]
+                device_name = f"{device_type} • {browser}"
+                ip_val = client_ip or ip_val
+            else:
+                parsed = parse_user_agent(ua)
+                device_type = parsed["device_type"]
+                browser = parsed["browser"]
+                os_name = parsed["os"]
+                device_name = parsed["device_name"]
+
+            last_active_dt = updated_at or created_at
+            last_active_str = (
+                last_active_dt.isoformat()
+                if hasattr(last_active_dt, "isoformat")
+                else str(last_active_dt)
+            )
+
+            sessions_list.append(
+                UserSession(
+                    id=sid,
+                    device_name=device_name,
+                    device_type=device_type,
+                    browser=browser,
+                    os=os_name,
+                    ip_address=ip_val,
+                    last_active=last_active_str,
+                    is_current=is_current,
+                )
+            )
+    except Exception:
+        pass
+
+    has_current = any(s.is_current for s in sessions_list)
+    if not has_current:
+        parsed = parse_user_agent(req_ua)
+        dev_t = client_hint_type or parsed["device_type"]
+        br = client_hint_browser or parsed["browser"]
+        os_n = client_hint_os or parsed["os"]
+        current_sess = UserSession(
+            id=current_session_id or "current-active-session",
+            device_name=f"{dev_t} • {br}",
+            device_type=dev_t,
+            browser=br,
+            os=os_n,
+            ip_address=client_ip,
+            last_active=datetime.now(timezone.utc).isoformat(),
+            is_current=True,
+        )
+        sessions_list.insert(0, current_sess)
+
+    sessions_list.sort(key=lambda s: not s.is_current)
+    return sessions_list
 
 
 @app.post("/api/auth/me/avatar", response_model=ProfileRead)

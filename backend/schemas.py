@@ -81,3 +81,15 @@ class ProfileUpdate(BaseModel):
 
 class RoleUpdate(BaseModel):
     role: str = Field(pattern="^(member|librarian|admin)$")
+
+
+class UserSession(BaseModel):
+    id: str
+    device_name: str
+    device_type: str = "Laptop"
+    browser: str
+    os: str
+    ip_address: str | None = None
+    last_active: str
+    is_current: bool = False
+
