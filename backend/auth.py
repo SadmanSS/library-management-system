@@ -16,14 +16,23 @@ from models import Profile
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def _supabase_request(path: str, method: str = "GET", payload: dict | None = None, token: str | None = None) -> dict:
+def _supabase_request(
+    path: str,
+    method: str = "GET",
+    payload: dict | None = None,
+    token: str | None = None,
+) -> dict:
     supabase_url = os.getenv("SUPABASE_URL")
     api_key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not api_key:
         raise HTTPException(status_code=503, detail="Authentication service is not configured")
 
     data = json.dumps(payload).encode() if payload is not None else None
-    headers = {"apikey": api_key, "Content-Type": "application/json"}
+    headers = {
+        "apikey": api_key,
+        "Content-Type": "application/json",
+        "User-Agent": "LibraryManagementBackend/1.0",
+    }
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(f"{supabase_url.rstrip('/')}/auth/v1/{path.lstrip('/')}", data=data, method=method, headers=headers)
@@ -62,11 +71,16 @@ def sign_up(email: str, password: str, full_name: str | None, phone: str | None 
 
 
 def sign_in(email: str, password: str) -> dict:
-    return _supabase_request("token?grant_type=password", method="POST", payload={"email": email, "password": password})
+    return _supabase_request(
+        "token?grant_type=password",
+        method="POST",
+        payload={"email": email, "password": password},
+    )
 
 
-def sign_out(token: str) -> None:
-    _supabase_request("logout", method="POST", token=token)
+def sign_out(token: str, scope: str = "local") -> None:
+    path = f"logout?scope={scope}" if scope else "logout"
+    _supabase_request(path, method="POST", token=token)
 
 
 def send_password_reset(email: str, redirect_to: str | None = None) -> None:

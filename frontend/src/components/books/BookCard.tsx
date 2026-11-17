@@ -1,5 +1,6 @@
 import type { Book, Profile, Route } from '../../types'
 import { CoverImage } from './CoverImage'
+import { EyeIcon, BookOpenIcon } from '../ui/Icons'
 
 type BookCardProps = {
   book: Book
@@ -17,89 +18,95 @@ export function BookCard({
   onDelete,
   onQuickView,
   canManage = false,
-  profile = null,
   viewMode = 'grid',
 }: BookCardProps) {
   const cover = book.cover_image_url
-  const primaryCategory = book.category ? book.category.split(',')[0].trim() : 'General'
   const isAvailable = book.available_copies > 0
-  const canBorrow = Boolean(profile && profile.role === 'member')
 
-  // Fallback palette choice based on book title length/id for variety
-  const placeholderThemes = [
-    'theme-navy',
-    'theme-burgundy',
-    'theme-forest',
-    'theme-charcoal',
-    'theme-amber',
-  ]
-  const themeClass = placeholderThemes[book.id % placeholderThemes.length]
-
+  // List View Mode
   if (viewMode === 'list') {
     return (
-      <article className="catalog-book-row" onClick={() => onQuickView?.(book)}>
-        <div className="book-row-cover" onClick={(e) => { e.stopPropagation(); onQuickView?.(book) }}>
+      <article
+        className="editorial-book-row"
+        onClick={() => onQuickView?.(book)}
+        tabIndex={0}
+        role="region"
+        aria-label={`Book: ${book.title}`}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onQuickView?.(book)
+        }}
+      >
+        <div
+          className="editorial-row-cover-wrap"
+          onClick={(e) => {
+            e.stopPropagation()
+            onQuickView?.(book)
+          }}
+        >
           {cover ? (
-            <CoverImage className="row-cover-img" src={cover} alt={`Cover of ${book.title}`} />
+            <CoverImage
+              className="editorial-row-cover-img"
+              src={cover}
+              alt={`Cover of ${book.title}`}
+              fallback={
+                <div className="editorial-cover-fallback">
+                  <BookOpenIcon className="fallback-emblem-icon" />
+                  <span className="fallback-title">{book.title}</span>
+                </div>
+              }
+            />
           ) : (
-            <div className={`book-cover-placeholder-luxury ${themeClass}`}>
-              <div className="spine-crease" />
-              <span className="placeholder-emblem">📖</span>
-              <span className="placeholder-title">{book.title}</span>
+            <div className="editorial-cover-fallback">
+              <BookOpenIcon className="fallback-emblem-icon" />
+              <span className="fallback-title">{book.title}</span>
             </div>
           )}
         </div>
 
-        <div className="book-row-details">
-          <div className="book-row-meta">
-            <span className="book-category-tag">{primaryCategory}</span>
-            <span className="book-isbn-tag">ISBN: {book.isbn}</span>
+        <div className="editorial-row-content">
+          <div className="editorial-row-meta">
+            <span className={`editorial-status-pill ${isAvailable ? 'available' : 'reserved'}`}>
+              <span className="status-dot" aria-hidden="true" />
+              {isAvailable ? 'Available' : 'Reserved'}
+            </span>
           </div>
 
-          <h3 className="book-row-title">{book.title}</h3>
-          <p className="book-row-author">by <em>{book.author}</em></p>
+          <h3 className="editorial-row-title" title={book.title}>
+            {book.title}
+          </h3>
+
+          <p className="editorial-row-author">by {book.author}</p>
 
           {book.description && (
-            <p className="book-row-synopsis">{book.description}</p>
+            <p className="editorial-row-description">{book.description}</p>
           )}
 
-          <div className="book-row-stock-info">
-            <span className="stock-ratio">
-              <strong>{book.available_copies}</strong> of <strong>{book.total_copies}</strong> copies available
+          <div className="editorial-row-stock">
+            <span>
+              <strong>{book.available_copies}</strong> of {book.total_copies} copies available
             </span>
+            {book.isbn && <span className="editorial-row-isbn">ISBN: {book.isbn}</span>}
           </div>
         </div>
 
-        <div className="book-row-actions" onClick={(e) => e.stopPropagation()}>
-          {canBorrow && (
-            isAvailable ? (
-              <button
-                type="button"
-                className="catalog-btn-borrow"
-                onClick={() => onNavigate('/borrow', `?bookId=${book.id}`)}
-              >
-                Borrow Volume →
-              </button>
-            ) : (
-              <button type="button" className="catalog-btn-borrow disabled" disabled>
-                All Loaned Out
-              </button>
-            )
-          )}
-
+        <div
+          className="editorial-row-actions"
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
-            className="catalog-btn-quickview"
+            className="editorial-btn-secondary"
             onClick={() => onQuickView?.(book)}
           >
-            Quick View
+            <EyeIcon className="btn-icon" />
+            <span>View Details</span>
           </button>
 
           {canManage && (
-            <div className="row-admin-actions">
+            <div className="editorial-row-admin">
               <button
                 type="button"
-                className="action-btn-pill edit"
+                className="editorial-admin-btn edit"
                 onClick={() => onNavigate('/books/edit', `?bookId=${book.id}`)}
                 title="Edit this book"
               >
@@ -107,7 +114,7 @@ export function BookCard({
               </button>
               <button
                 type="button"
-                className="action-btn-pill danger"
+                className="editorial-admin-btn delete"
                 onClick={() => onDelete(book)}
                 title="Delete this book"
               >
@@ -120,10 +127,10 @@ export function BookCard({
     )
   }
 
-  // Grid Mode Card - Compact, elegant bookstore proportions
+  // Grid View Mode (Product Card)
   return (
     <article
-      className="catalog-book-card"
+      className="editorial-book-card"
       tabIndex={0}
       role="region"
       aria-label={`Book: ${book.title}`}
@@ -131,98 +138,105 @@ export function BookCard({
         if (e.key === 'Enter') onQuickView?.(book)
       }}
     >
-      {/* Cover container */}
+      {/* 1. Book Cover Image Container */}
       <div
-        className="book-card-cover-container"
+        className="editorial-card-cover-wrap"
         onClick={() => onQuickView?.(book)}
       >
         {cover ? (
-          <CoverImage className="card-cover-img" src={cover} alt={`Cover of ${book.title}`} />
+          <CoverImage
+            className="editorial-card-cover-img"
+            src={cover}
+            alt={`Cover of ${book.title}`}
+            fallback={
+              <div className="editorial-cover-fallback">
+                <BookOpenIcon className="fallback-emblem-icon" />
+                <span className="fallback-title">{book.title}</span>
+                <span className="fallback-author">{book.author}</span>
+              </div>
+            }
+          />
         ) : (
-          <div className={`book-cover-placeholder-luxury ${themeClass}`}>
-            <div className="spine-crease" />
-            <div className="placeholder-gold-frame">
-              <span className="placeholder-emblem">📖</span>
-              <span className="placeholder-title">{book.title}</span>
-              <span className="placeholder-author">{book.author}</span>
-            </div>
+          <div className="editorial-cover-fallback">
+            <BookOpenIcon className="fallback-emblem-icon" />
+            <span className="fallback-title">{book.title}</span>
+            <span className="fallback-author">{book.author}</span>
           </div>
         )}
 
-        {/* Quick View Hover Overlay */}
-        <div className="cover-hover-overlay">
-          <span className="quick-view-prompt">
-            <span className="eye-icon">👁️</span> Quick View
+        <div className="editorial-cover-overlay">
+          <span className="editorial-quickview-tag">
+            <EyeIcon /> View Details
           </span>
         </div>
       </div>
 
-      {/* Card Content */}
-      <div className="book-card-body">
-        <div className="card-top-tags">
-          <span className="book-category-tag">{primaryCategory}</span>
-          <span className="book-isbn-tag">{book.isbn.slice(0, 13)}</span>
+      {/* 2-6. Card Content */}
+      <div className="editorial-card-body">
+        {/* Availability Status */}
+        <div className="editorial-card-meta-row">
+          <span className={`editorial-status-pill ${isAvailable ? 'available' : 'reserved'}`}>
+            <span className="status-dot" aria-hidden="true" />
+            {isAvailable ? 'Available' : 'Reserved'}
+          </span>
         </div>
 
+        {/* 3. Book Title */}
         <h3
-          className="book-card-title"
+          className="editorial-card-title"
           title={book.title}
           onClick={() => onQuickView?.(book)}
         >
           {book.title}
         </h3>
 
-        <p className="book-card-author" title={`by ${book.author}`}>
-          by <em>{book.author}</em>
+        {/* 4. Author Name */}
+        <p className="editorial-card-author" title={`by ${book.author}`}>
+          by {book.author}
         </p>
 
-        <div className="book-card-stock-status">
-          <span className="stock-meter-label">
-            <strong>{book.available_copies}</strong> of {book.total_copies} available
+        {/* 5. Available Copies Information */}
+        <div className="editorial-card-stock">
+          <span className="editorial-stock-text">
+            <strong>{book.available_copies}</strong> of {book.total_copies} copies available
           </span>
         </div>
 
-        {/* Action Buttons */}
-        {(canBorrow || canManage) && (
-          <div className="book-card-footer">
-            {canBorrow && (
-              isAvailable ? (
-                <button
-                  type="button"
-                  className="catalog-btn-borrow"
-                  onClick={() => onNavigate('/borrow', `?bookId=${book.id}`)}
-                >
-                  Borrow <span className="arrow">→</span>
-                </button>
-              ) : (
-                <button type="button" className="catalog-btn-borrow disabled" disabled>
-                  Reserved
-                </button>
-              )
-            )}
+        {/* 7. View Details Action */}
+        <div
+          className="editorial-card-actions"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="editorial-btn-secondary"
+            onClick={() => onQuickView?.(book)}
+          >
+            <EyeIcon className="btn-icon" />
+            <span>View Details</span>
+          </button>
 
-            {canManage && (
-              <div className="card-manage-actions">
-                <button
-                  type="button"
-                  className="action-btn-pill edit"
-                  onClick={() => onNavigate('/books/edit', `?bookId=${book.id}`)}
-                  title="Edit book"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="action-btn-pill danger"
-                  onClick={() => onDelete(book)}
-                  title="Delete book"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+          {canManage && (
+            <div className="editorial-card-admin-row">
+              <button
+                type="button"
+                className="editorial-admin-btn edit"
+                onClick={() => onNavigate('/books/edit', `?bookId=${book.id}`)}
+                title="Edit book"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className="editorial-admin-btn delete"
+                onClick={() => onDelete(book)}
+                title="Delete book"
+              >
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </article>
   )

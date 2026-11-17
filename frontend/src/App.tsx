@@ -4,6 +4,7 @@ import { Footer } from './components/layout/Footer'
 import { Navbar } from './components/layout/Navbar'
 import { AddBook } from './pages/AddBook'
 import { BookCatalogue } from './pages/BookCatalogue'
+import { BookDetail } from './pages/BookDetail'
 import { BorrowBook } from './pages/Member/BorrowBook'
 import { Home } from './pages/Home'
 import { EditBook } from './pages/EditBook'
@@ -19,7 +20,7 @@ import { supabase, isPasswordRecoveryUrl } from './services/supabase'
 import type { Profile as ProfileData, Route } from './types'
 import { StateMessage } from './components/ui/StateMessage'
 
-const paths: Route[] = ['/', '/home', '/books', '/books/add', '/books/edit', '/profile', '/borrow', '/return', '/login', '/register', '/forgot-password', '/reset-password', '/staff', '/admin', '/admin/users']
+const paths: Route[] = ['/', '/home', '/books', '/books/detail', '/books/add', '/books/edit', '/profile', '/borrow', '/return', '/login', '/register', '/forgot-password', '/reset-password', '/staff', '/admin', '/admin/users']
 
 function getPath(): Route {
   if (isPasswordRecoveryUrl()) return '/home'
@@ -94,7 +95,7 @@ function App() {
 
   if (authLoading) return <div className="app-shell"><StateMessage loading title="Checking your session..." text="Just a moment." /></div>
 
-  const requiresAuth = ['/', '/books', '/books/add', '/books/edit', '/profile', '/borrow', '/return', '/staff', '/admin', '/admin/users'].includes(path)
+  const requiresAuth = ['/', '/books', '/books/detail', '/books/add', '/books/edit', '/profile', '/borrow', '/return', '/staff', '/admin', '/admin/users'].includes(path)
   const canManageBooks = profile?.role === 'librarian' || profile?.role === 'admin'
 
 
@@ -104,10 +105,11 @@ function App() {
     : !profile && path === '/forgot-password' ? <Home onNavigate={navigate} onAuthenticated={setProfile} initialAuthMode="forgot-password" />
     : !profile && path === '/reset-password' ? <Home onNavigate={navigate} onAuthenticated={setProfile} initialAuthMode="set-new-password" />
     : path === '/' && !profile ? <Home onNavigate={navigate} onAuthenticated={setProfile} profile={profile} />
-    : path === '/' && profile?.role === 'member' ? <MemberHome onNavigate={navigate} />
+    : path === '/' && profile?.role === 'member' ? <MemberHome onNavigate={navigate} profile={profile} />
     : path === '/' && profile?.role === 'librarian' ? <StaffHome onNavigate={navigate} />
       : path === '/' && profile?.role === 'admin' ? <AdminHome onNavigate={navigate} />
     : path === '/books' ? <BookCatalogue onNavigate={navigate} canManage={canManageBooks} profile={profile} />
+    : path === '/books/detail' ? <BookDetail onNavigate={navigate} canManage={canManageBooks} profile={profile} />
       : path === '/login' || path === '/register' || path === '/forgot-password' || path === '/reset-password' ? <Home onNavigate={navigate} onAuthenticated={setProfile} profile={profile} />
 
 

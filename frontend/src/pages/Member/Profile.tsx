@@ -1,11 +1,17 @@
-import { useRef, useState } from 'react'
-import { updateProfile, uploadAvatar } from '../../services/api'
-import type { Profile as ProfileData, Route } from '../../types'
+import { useEffect, useRef, useState } from 'react'
+import { deleteAvatar, getUserSessions, logout, updateProfile, uploadAvatar } from '../../services/api'
+import type { Profile as ProfileData, Route, UserSession } from '../../types'
+import { getClientDeviceInfo } from '../../utils/deviceDetection'
 import { useBodyScrollLock } from '../../utils/useBodyScrollLock'
+import {
+  AlertCircleIcon,
+  CheckCircleIcon,
+  XIcon,
+} from '../../components/ui/Icons'
 
 type Props = {
   profile: ProfileData
-  onNavigate: (path: Route) => void
+  onNavigate?: (path: Route) => void
   onProfileUpdated: (profile: ProfileData) => void
   onLogout: () => void
 }
@@ -23,7 +29,84 @@ function getInitials(nameOrEmail: string): string {
   return clean.slice(0, 2).toUpperCase()
 }
 
-export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Props) {
+function formatLastActive(dateStr: string): string {
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return dateStr
+    const now = new Date()
+    const diffMs = now.getTime() - d.getTime()
+    const diffMins = Math.floor(diffMs / (1000 * 60))
+    if (diffMins < 2) return 'Active just now'
+    if (diffMins < 60) return `Active ${diffMins}m ago`
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return `Active ${diffHours}h ago`
+    return d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  } catch {
+    return dateStr
+  }
+}
+
+function LaptopIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect width="18" height="12" x="3" y="4" rx="2" />
+      <line x1="2" x2="22" y1="20" y2="20" />
+    </svg>
+  )
+}
+
+function DesktopIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect width="20" height="14" x="2" y="3" rx="2" />
+      <line x1="8" x2="16" y1="21" y2="21" />
+      <line x1="12" x2="12" y1="17" y2="21" />
+    </svg>
+  )
+}
+
+function SmartphoneIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect width="12" height="18" x="6" y="3" rx="2" />
+      <line x1="11" x2="13" y1="18" y2="18" />
+    </svg>
+  )
+}
+
+function TabletIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect width="16" height="20" x="4" y="2" rx="2" />
+      <line x1="11" x2="13" y1="18" y2="18" />
+    </svg>
+  )
+}
+
+function ShieldCheckIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <polyline points="9 12 11 14 15 10" />
+    </svg>
+  )
+}
+
+function getDeviceIcon(deviceType?: string) {
+  const dt = (deviceType || '').toLowerCase()
+  if (dt.includes('phone') || dt.includes('mobile')) return <SmartphoneIcon />
+  if (dt.includes('tablet') || dt.includes('ipad')) return <TabletIcon />
+  if (dt.includes('desktop') || dt.includes('pc')) return <DesktopIcon />
+  return <LaptopIcon />
+}
+
+export function Profile({ profile, onProfileUpdated, onLogout }: Props) {
   const [fullName, setFullName] = useState(profile.full_name ?? '')
   const [phone, setPhone] = useState(profile.phone ?? '')
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url ?? '')
@@ -32,8 +115,14 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
   const [saving, setSaving] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
-  useBodyScrollLock(showPhotoModal || showLogoutConfirm)
+
+  // Sessions state
+  const [sessions, setSessions] = useState<UserSession[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(true)
+  const [sessionActionLoading, setSessionActionLoading] = useState<string | null>(null)
+  const [logoutScopeToConfirm, setLogoutScopeToConfirm] = useState<'local' | 'others' | 'global' | null>(null)
+
+  useBodyScrollLock(showPhotoModal || Boolean(logoutScopeToConfirm))
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const roleLabels: Record<string, { title: string; badge: string; desc: string }> = {
@@ -55,6 +144,54 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
   }
 
   const roleMeta = roleLabels[profile.role] || roleLabels.member
+
+  // Fetch active sessions on mount and apply client device details
+  useEffect(() => {
+    let mounted = true
+    async function fetchSessions() {
+      setSessionsLoading(true)
+      const clientInfo = getClientDeviceInfo()
+      try {
+        const data = await getUserSessions()
+        if (mounted) {
+          const mapped = data.map((s) => {
+            if (s.is_current) {
+              return {
+                ...s,
+                device_type: clientInfo.device_type,
+                browser: clientInfo.browser,
+                os: clientInfo.os,
+                device_name: `${clientInfo.device_type} • ${clientInfo.browser}`,
+              }
+            }
+            return s
+          })
+          setSessions(mapped)
+        }
+      } catch {
+        if (mounted) {
+          setSessions([
+            {
+              id: 'current',
+              device_name: `${clientInfo.device_type} • ${clientInfo.browser}`,
+              device_type: clientInfo.device_type,
+              browser: clientInfo.browser,
+              os: clientInfo.os,
+              ip_address: null,
+              last_active: new Date().toISOString(),
+              is_current: true,
+            },
+          ])
+        }
+      } finally {
+        if (mounted) setSessionsLoading(false)
+      }
+    }
+    fetchSessions()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -85,7 +222,6 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
       try {
         updated = await uploadAvatar(file)
       } catch {
-        // Fallback to data URL if direct upload fails
         const reader = new FileReader()
         const dataUrl = await new Promise<string>((resolve, reject) => {
           reader.onload = () => resolve(reader.result as string)
@@ -110,10 +246,16 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
     setMessage('')
     setError('')
     try {
+      let updated: ProfileData
+      try {
+        updated = await deleteAvatar()
+      } catch {
+        updated = await updateProfile(fullName.trim(), phone.trim(), null)
+      }
       setAvatarUrl('')
-      const updated = await updateProfile(fullName.trim(), phone.trim(), null)
       onProfileUpdated(updated)
-      setMessage('Profile picture removed.')
+      setMessage('Profile picture removed successfully.')
+      setShowPhotoModal(false)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unable to remove picture.')
     } finally {
@@ -121,8 +263,54 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
     }
   }
 
+  async function handleExecuteLogout(scope: 'local' | 'others' | 'global') {
+    setSessionActionLoading(scope)
+    setError('')
+    setMessage('')
+    try {
+      if (scope === 'others') {
+        await logout('others')
+        const clientInfo = getClientDeviceInfo()
+        const updated = await getUserSessions().catch(() => [])
+        const mapped = updated.map((s) => {
+          if (s.is_current) {
+            return {
+              ...s,
+              device_type: clientInfo.device_type,
+              browser: clientInfo.browser,
+              os: clientInfo.os,
+              device_name: `${clientInfo.device_type} • ${clientInfo.browser}`,
+            }
+          }
+          return s
+        })
+        setSessions(mapped.length ? mapped : sessions.filter((s) => s.is_current))
+        setMessage('Successfully logged out of all other devices.')
+        setLogoutScopeToConfirm(null)
+      } else if (scope === 'global') {
+        await logout('global')
+        onLogout()
+      } else {
+        await logout('local')
+        onLogout()
+      }
+    } catch (err: unknown) {
+      if (scope === 'others') {
+        setError(err instanceof Error ? err.message : 'Failed to log out of other devices.')
+      } else {
+        onLogout()
+      }
+    } finally {
+      setSessionActionLoading(null)
+    }
+  }
+
+  const currentSession = sessions.find((s) => s.is_current) || sessions[0]
+  const otherSessions = sessions.filter((s) => s !== currentSession && !s.is_current)
+
   return (
-    <section className="profile-page-container">
+    <div className="profile-page">
+      <section className="profile-page-container">
       {/* Hidden file input for uploading from device */}
       <input
         type="file"
@@ -132,19 +320,47 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
         style={{ display: 'none' }}
       />
 
+      {/* Page Header */}
       <div className="profile-header-section">
         <p className="section-kicker">ACCOUNT & PREFERENCES</p>
         <h1>My Profile</h1>
-        <p>Review your personal library account details, customize your picture, and control your session.</p>
+        <p>Review your personal library account details, customize your picture, and control active login sessions.</p>
       </div>
 
+      {/* Global Notifications */}
+      {message && (
+        <div className="profile-alert profile-alert-success" role="status">
+          <CheckCircleIcon />
+          <span>{message}</span>
+          <button type="button" className="alert-dismiss" onClick={() => setMessage('')} aria-label="Dismiss alert">
+            <XIcon />
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div className="profile-alert profile-alert-error" role="alert">
+          <AlertCircleIcon />
+          <span>{error}</span>
+          <button type="button" className="alert-dismiss" onClick={() => setError('')} aria-label="Dismiss alert">
+            <XIcon />
+          </button>
+        </div>
+      )}
+
+      {/* Profile Overview Card */}
       <div className="profile-overview-card">
         <div
           className="profile-avatar-wrapper"
           onClick={() => setShowPhotoModal(true)}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowPhotoModal(true) } }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setShowPhotoModal(true)
+            }
+          }}
           aria-label="Click to change profile picture"
           title="Click to change profile picture"
         >
@@ -184,7 +400,9 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
         </div>
       </div>
 
+      {/* Grid Layout: Left is Personal Details, Right is Account Sessions */}
       <div className="profile-grid-layout">
+        {/* Left Column: Personal Details */}
         <div className="profile-edit-section">
           <h3>Personal Details</h3>
           <p className="profile-section-sub">Update how your name and contact details appear across the library system.</p>
@@ -231,144 +449,222 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
               />
             </label>
 
-            {message && <p className="auth-message" role="status">{message}</p>}
-            {error && <p className="form-error" role="alert">{error}</p>}
-
             <div className="profile-actions">
-              <button type="submit" className="button button-primary" disabled={saving || uploadingAvatar}>
+              <button type="submit" className="editorial-btn-primary profile-save-btn" disabled={saving || uploadingAvatar}>
                 {saving ? 'Saving changes...' : 'Save Profile'}
               </button>
             </div>
           </form>
         </div>
 
-        <div className="profile-sidebar-panels">
-          <div className="profile-quick-nav">
-            <h3>Quick Actions</h3>
-            <div className="profile-nav-buttons">
-              {profile.role === 'admin' && (
-                <>
-                  <button className="profile-quick-btn" onClick={() => onNavigate('/')}>
-                    <span className="btn-icon">⚙️</span>
-                    <div>
-                      <strong>Admin Dashboard</strong>
-                      <small>System overview & control</small>
-                    </div>
-                  </button>
-                  <button className="profile-quick-btn" onClick={() => onNavigate('/admin/users')}>
-                    <span className="btn-icon">👥</span>
-                    <div>
-                      <strong>Manage Users</strong>
-                      <small>Assign roles & access</small>
-                    </div>
-                  </button>
-                  <button className="profile-quick-btn" onClick={() => onNavigate('/books/add')}>
-                    <span className="btn-icon">➕</span>
-                    <div>
-                      <strong>Add New Book</strong>
-                      <small>Register new title in catalog</small>
-                    </div>
-                  </button>
-                </>
-              )}
-
-              {profile.role === 'librarian' && (
-                <>
-                  <button className="profile-quick-btn" onClick={() => onNavigate('/')}>
-                    <span className="btn-icon">📋</span>
-                    <div>
-                      <strong>Staff Dashboard</strong>
-                      <small>Daily operations desk</small>
-                    </div>
-                  </button>
-                  <button className="profile-quick-btn" onClick={() => onNavigate('/books/add')}>
-                    <span className="btn-icon">➕</span>
-                    <div>
-                      <strong>Add New Book</strong>
-                      <small>Register new title in catalog</small>
-                    </div>
-                  </button>
-                  <button className="profile-quick-btn" onClick={() => onNavigate('/return')}>
-                    <span className="btn-icon">🔄</span>
-                    <div>
-                      <strong>Process Returns</strong>
-                      <small>Check in returned patron books</small>
-                    </div>
-                  </button>
-                </>
-              )}
-
-              <button className="profile-quick-btn" onClick={() => onNavigate('/books')}>
-                <span className="btn-icon">📚</span>
-                <div>
-                  <strong>{profile.role === 'member' ? 'Browse Catalog' : 'Manage Catalog'}</strong>
-                  <small>Explore collection & availability</small>
-                </div>
-              </button>
-
-              {profile.role === 'member' && (
-                <>
-                  <button className="profile-quick-btn" onClick={() => onNavigate('/borrow')}>
-                    <span className="btn-icon">📖</span>
-                    <div>
-                      <strong>Reserve a Book</strong>
-                      <small>Place a borrowing request</small>
-                    </div>
-                  </button>
-                  <button className="profile-quick-btn" onClick={() => onNavigate('/return')}>
-                    <span className="btn-icon">🔄</span>
-                    <div>
-                      <strong>My Loans</strong>
-                      <small>Check return status & dates</small>
-                    </div>
-                  </button>
-                </>
-              )}
+        {/* Right Column: Account Sessions -> Active Sessions */}
+        <div className="profile-sessions-section">
+          <div className="sessions-header-row">
+            <div className="sessions-header-icon">
+              <ShieldCheckIcon />
+            </div>
+            <div>
+              <p className="sessions-breadcrumb-trail">
+                <span>Account Sessions</span>
+                <span className="breadcrumb-arrow">&rarr;</span>
+                <span className="breadcrumb-active">Active Sessions</span>
+              </p>
+              <h3>Account Sessions</h3>
+              <p className="profile-section-sub">Devices currently authenticated with your account credentials.</p>
             </div>
           </div>
 
-          <div className="profile-session-box">
-            <h3>Account Session</h3>
-            <p>Signed in as <strong>{profile.email}</strong></p>
-            <p className="session-hint">You can sign out of your account anytime to protect your privacy on shared devices.</p>
-
-            {!showLogoutConfirm ? (
-              <button
-                type="button"
-                className="profile-logout-button"
-                onClick={() => setShowLogoutConfirm(true)}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-                Log Out
-              </button>
-            ) : (
-              <div className="profile-logout-confirm">
-                <p>Are you sure you want to log out?</p>
-                <div className="logout-confirm-actions">
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    onClick={() => setShowLogoutConfirm(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="button button-logout-danger"
-                    onClick={onLogout}
-                  >
-                    Yes, Log Out
-                  </button>
+          {/* 1. THIS DEVICE (TOP) */}
+          <div className="session-current-card">
+            <div className="session-item-header">
+              <div className="session-device-icon">
+                {getDeviceIcon(currentSession?.device_type)}
+              </div>
+              <div className="session-device-info">
+                <div className="session-device-name-row">
+                  <div className="session-device-title-wrap">
+                    <strong className="session-browser-name">
+                      {currentSession?.browser || 'Browser'}
+                    </strong>
+                    <span className="session-device-type-badge">
+                      {currentSession?.device_type || 'Device'}
+                    </span>
+                  </div>
+                  <span className="session-pill-current">
+                    <span className="session-pulse-dot" aria-hidden="true" />
+                    This Device • Active Now
+                  </span>
                 </div>
+                <div className="session-meta-row">
+                  <span className="session-os-tag">{currentSession?.os || 'System'}</span>
+                  {currentSession?.ip_address && (
+                    <>
+                      <span className="session-meta-sep">•</span>
+                      <span className="session-ip">IP: {currentSession.ip_address}</span>
+                    </>
+                  )}
+                  <span className="session-meta-sep">•</span>
+                  <span className="session-time">Active now</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. THREE LOGOUT OPTIONS (PLACED BEFORE OTHER DEVICES) */}
+          <div className="session-action-buttons">
+            <button
+              type="button"
+              className="editorial-btn-secondary session-btn"
+              onClick={() => setLogoutScopeToConfirm('local')}
+            >
+              Log Out From This Device
+            </button>
+
+            <button
+              type="button"
+              className="editorial-btn-secondary session-btn"
+              disabled={otherSessions.length === 0 || sessionActionLoading !== null}
+              onClick={() => setLogoutScopeToConfirm('others')}
+              title={otherSessions.length === 0 ? 'No other active devices' : 'Revoke sessions on all other devices'}
+            >
+              Log Out From Other Devices ({otherSessions.length})
+            </button>
+
+            <button
+              type="button"
+              className="button-logout-danger session-btn"
+              onClick={() => setLogoutScopeToConfirm('global')}
+            >
+              Log Out From Everywhere
+            </button>
+          </div>
+
+          {/* 3. LOGGED-IN DEVICES & SESSION HISTORY (AFTER LOGOUT OPTIONS) */}
+          <div className="session-others-group">
+            <div className="session-others-title-row">
+              <div>
+                <span className="session-group-label">Logged-in Devices &amp; Session History</span>
+                <p className="session-group-desc">Previous and concurrent logins detected on your account.</p>
+              </div>
+              <span className="session-others-badge">
+                {sessionsLoading ? 'Checking...' : `${otherSessions.length} other ${otherSessions.length === 1 ? 'device' : 'devices'}`}
+              </span>
+            </div>
+
+            {sessionsLoading ? (
+              <div className="session-loading-box">
+                <span className="spinner-dot" />
+                <span>Checking logged-in devices...</span>
+              </div>
+            ) : otherSessions.length === 0 ? (
+              <div className="session-empty-card">
+                <p>No other active devices logged in. You are only signed in on this current device.</p>
+              </div>
+            ) : (
+              <div className="session-others-list">
+                {otherSessions.map((s) => (
+                  <div key={s.id} className="session-device-item">
+                    <div className="session-device-icon secondary">
+                      {getDeviceIcon(s.device_type)}
+                    </div>
+                    <div className="session-device-info">
+                      <div className="session-device-name-row">
+                        <div className="session-device-title-wrap">
+                          <strong className="session-browser-name">{s.browser || 'Browser'}</strong>
+                          <span className="session-device-type-badge secondary">
+                            {s.device_type || 'Device'}
+                          </span>
+                        </div>
+                        <span className="session-status-subtle">Logged In</span>
+                      </div>
+                      <div className="session-meta-row">
+                        <span className="session-os-tag">{s.os}</span>
+                        {s.ip_address && (
+                          <>
+                            <span className="session-meta-sep">•</span>
+                            <span className="session-ip">IP: {s.ip_address}</span>
+                          </>
+                        )}
+                        <span className="session-meta-sep">•</span>
+                        <span className="session-time">{formatLastActive(s.last_active)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Logout Confirmation Dialog Modal */}
+      {logoutScopeToConfirm && (
+        <div
+          className="avatar-modal-backdrop"
+          onClick={() => setLogoutScopeToConfirm(null)}
+          role="presentation"
+        >
+          <div
+            className="avatar-modal session-confirm-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="session-confirm-title"
+          >
+            <div className="avatar-modal-header">
+              <h3 id="session-confirm-title">
+                {logoutScopeToConfirm === 'local'
+                  ? 'Log Out From This Device?'
+                  : logoutScopeToConfirm === 'others'
+                  ? 'Log Out From Other Devices?'
+                  : 'Log Out From Everywhere?'}
+              </h3>
+              <button
+                type="button"
+                className="avatar-modal-close"
+                onClick={() => setLogoutScopeToConfirm(null)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="session-confirm-body">
+              <p>
+                {logoutScopeToConfirm === 'local' &&
+                  'Are you sure you want to log out of this device? You will need to enter your email and password to sign back in.'}
+                {logoutScopeToConfirm === 'others' &&
+                  `Are you sure you want to log out of ${otherSessions.length} other ${otherSessions.length === 1 ? 'device' : 'devices'}? Their active sessions will be revoked immediately while this device remains signed in.`}
+                {logoutScopeToConfirm === 'global' &&
+                  'Are you sure you want to log out everywhere? All active sessions across all devices (including this computer) will be terminated immediately.'}
+              </p>
+            </div>
+
+            <div className="session-confirm-actions">
+              <button
+                type="button"
+                className="editorial-btn-secondary session-modal-cancel-btn"
+                onClick={() => setLogoutScopeToConfirm(null)}
+                disabled={sessionActionLoading !== null}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={logoutScopeToConfirm === 'others' ? 'editorial-btn-primary session-modal-confirm-btn' : 'button-logout-danger session-modal-confirm-btn'}
+                onClick={() => handleExecuteLogout(logoutScopeToConfirm)}
+                disabled={sessionActionLoading !== null}
+              >
+                {sessionActionLoading === logoutScopeToConfirm
+                  ? 'Processing...'
+                  : logoutScopeToConfirm === 'others'
+                  ? 'Yes, Log Out Other Devices'
+                  : 'Yes, Log Out'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Profile Picture Options Modal */}
       {showPhotoModal && (
@@ -405,7 +701,7 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
                 )}
               </div>
               <p className="avatar-modal-hint">
-                {avatarUrl ? 'Current profile picture' : 'No custom picture set'}
+                {avatarUrl ? 'Current profile picture' : 'No custom picture set (showing initials)'}
               </p>
             </div>
 
@@ -430,10 +726,7 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
                 type="button"
                 className="avatar-action-button avatar-action-danger"
                 disabled={!avatarUrl || saving || uploadingAvatar}
-                onClick={() => {
-                  setShowPhotoModal(false)
-                  handleRemoveAvatar()
-                }}
+                onClick={handleRemoveAvatar}
               >
                 <span className="action-btn-icon">🗑️</span>
                 <div className="action-btn-text">
@@ -446,5 +739,6 @@ export function Profile({ profile, onNavigate, onProfileUpdated, onLogout }: Pro
         </div>
       )}
     </section>
+    </div>
   )
 }

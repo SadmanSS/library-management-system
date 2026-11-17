@@ -1,4 +1,4 @@
-﻿export type Route = '/' | '/home' | '/categories' | '/books' | '/books/add' | '/books/edit' | '/profile' | '/borrow' | '/return'
+export type Route = '/' | '/home' | '/categories' | '/books' | '/books/detail' | '/books/add' | '/books/edit' | '/profile' | '/borrow' | '/return'
   | '/login' | '/register' | '/forgot-password' | '/reset-password' | '/staff' | '/admin' | '/admin/users'
 
 export type Role = 'member' | 'librarian' | 'admin'
@@ -10,6 +10,17 @@ export type Profile = {
   phone?: string | null
   avatar_url?: string | null
   role: Role
+}
+
+export type UserSession = {
+  id: string
+  device_name: string
+  device_type?: string
+  browser: string
+  os: string
+  ip_address: string | null
+  last_active: string
+  is_current: boolean
 }
 
 export type Book = {

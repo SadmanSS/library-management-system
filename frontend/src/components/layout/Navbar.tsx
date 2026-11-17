@@ -27,16 +27,25 @@ function getInitials(nameOrEmail: string): string {
 }
 
 export function Navbar({ path, profile, menuOpen, onNavigate, onToggleMenu, theme = 'light', onToggleTheme }: Props) {
+  const isMember = profile?.role === 'member'
   const isStaffOrAdmin = profile?.role === 'librarian' || profile?.role === 'admin'
   const isLandingPage =
     path === '/' ||
     path === '/home' ||
     (!profile && (path === '/login' || path === '/register' || path === '/forgot-password'))
 
-  const [activeSection, setActiveSection] = useState<'home' | 'about'>('home')
+  const [activeSection, setActiveSection] = useState<'home' | 'about'>(() => {
+    const pending = typeof window !== 'undefined' ? sessionStorage.getItem('lms_nav_section') : null
+    if (pending === 'home' || pending === 'about') return pending
+    return 'home'
+  })
   const targetSectionRef = useRef<'home' | 'about' | null>(null)
   const scrollTimeoutRef = useRef<number | null>(null)
   const rafPendingRef = useRef(false)
+
+  const isHomeActive = isMember
+    ? path === '/' || path === '/home'
+    : isLandingPage && activeSection === 'home'
 
   // Listen for scroll to synchronize active nav link without flickering
   useEffect(() => {
@@ -105,9 +114,9 @@ export function Navbar({ path, profile, menuOpen, onNavigate, onToggleMenu, them
     const pending = sessionStorage.getItem('lms_nav_section')
     if (pending === 'home' || pending === 'about') {
       sessionStorage.removeItem('lms_nav_section')
-      setActiveSection(pending)
       targetSectionRef.current = pending
       window.setTimeout(() => {
+        setActiveSection(pending)
         if (pending === 'home') {
           window.scrollTo({ top: 0, behavior: 'smooth' })
         } else {
@@ -160,7 +169,7 @@ export function Navbar({ path, profile, menuOpen, onNavigate, onToggleMenu, them
 
         {/* Mobile menu toggle */}
         <button
-          className="menu-toggle"
+          className={`menu-toggle ${menuOpen ? 'is-active' : ''}`}
           onClick={onToggleMenu}
           aria-expanded={menuOpen}
           aria-label="Toggle navigation"
@@ -171,16 +180,44 @@ export function Navbar({ path, profile, menuOpen, onNavigate, onToggleMenu, them
           <span />
         </button>
 
-        {/* Main Nav Links: Home, Categories, About */}
+        {/* Main Nav Links: Member (Home, Catalogue, History), Staff/Admin, Guest */}
         <nav className={`main-nav paradise-main-nav ${menuOpen ? 'is-open' : ''}`} aria-label="Main navigation">
+          {/* Home */}
           <button
             type="button"
-            className={isLandingPage && activeSection === 'home' ? 'nav-link paradise-nav-link active' : 'nav-link paradise-nav-link'}
+            className={isHomeActive ? 'nav-link paradise-nav-link active' : 'nav-link paradise-nav-link'}
             onClick={handleHomeClick}
           >
             Home
           </button>
 
+          {/* Catalogue */}
+          <button
+            type="button"
+            className={path === '/books' ? 'nav-link paradise-nav-link active' : 'nav-link paradise-nav-link'}
+            onClick={() => {
+              onNavigate('/books')
+              if (menuOpen) onToggleMenu()
+            }}
+          >
+            Catalogue
+          </button>
+
+          {/* Member Links: History */}
+          {isMember && (
+            <button
+              type="button"
+              className={path === '/return' ? 'nav-link paradise-nav-link active' : 'nav-link paradise-nav-link'}
+              onClick={() => {
+                onNavigate('/return')
+                if (menuOpen) onToggleMenu()
+              }}
+            >
+              History
+            </button>
+          )}
+
+          {/* Staff / Admin Return */}
           {isStaffOrAdmin && (
             <button
               type="button"
@@ -194,42 +231,7 @@ export function Navbar({ path, profile, menuOpen, onNavigate, onToggleMenu, them
             </button>
           )}
 
-          {profile?.role === 'member' && (
-            <>
-              <button
-                type="button"
-                className={path === '/return' ? 'nav-link paradise-nav-link active' : 'nav-link paradise-nav-link'}
-                onClick={() => {
-                  onNavigate('/return')
-                  if (menuOpen) onToggleMenu()
-                }}
-              >
-                My loans
-              </button>
-              <button
-                type="button"
-                className={path === '/borrow' ? 'nav-link paradise-nav-link active' : 'nav-link paradise-nav-link'}
-                onClick={() => {
-                  onNavigate('/borrow')
-                  if (menuOpen) onToggleMenu()
-                }}
-              >
-                Reservations
-              </button>
-            </>
-          )}
-
-          <button
-            type="button"
-            className={path === '/books' ? 'nav-link paradise-nav-link active' : 'nav-link paradise-nav-link'}
-            onClick={() => {
-              onNavigate('/books')
-              if (menuOpen) onToggleMenu()
-            }}
-          >
-            Catalogue
-          </button>
-
+          {/* Guest About */}
           {!profile && (
             <button
               type="button"

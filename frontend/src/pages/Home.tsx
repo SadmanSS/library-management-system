@@ -64,6 +64,7 @@ export function Home({ onNavigate, onAuthenticated, initialAuthMode = null, prof
   }, [showScheduleModal])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAuthModalMode(initialAuthMode ?? null)
   }, [initialAuthMode])
 
@@ -71,6 +72,7 @@ export function Home({ onNavigate, onAuthenticated, initialAuthMode = null, prof
   useEffect(() => {
     // 1. Check if the URL contains type=recovery or recovery token on mount
     if (isPasswordRecoveryUrl()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAuthModalMode('set-new-password')
     }
 
